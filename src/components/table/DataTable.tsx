@@ -121,6 +121,11 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo }: Props) {
           </div>
         </div>
         <div className="flex gap-2">
+          <Button variant="success" size="sm" onClick={() => exportXlsx(filtered, db, year)}>
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3">
+              <path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/>
+            </svg>Export XLSX
+          </Button>
           <Button variant="success" size="sm" onClick={() => exportCsv(filtered, db, year)}>
             <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3">
               <path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/>
@@ -202,33 +207,26 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo }: Props) {
       </div>
 
       {/* Table */}
-      <div className="border-t border-gray-100 overflow-x-hidden overflow-y-auto" style={{ maxHeight: '65vh' }}>
-        <table className="w-full border-collapse text-[12px]" style={{ tableLayout: 'fixed' }}>
-          <colgroup>
-            <col style={{width:'3.5%'}} /><col style={{width:'5%'}} /><col style={{width:'5%'}} />
-            <col style={{width:'7%'}} /><col style={{width:'8%'}} /><col style={{width:'4%'}} />
-            <col style={{width:'4%'}} /><col style={{width:'4%'}} /><col style={{width:'6%'}} />
-            <col style={{width:'10%'}} /><col style={{width:'9%'}} />
-            <col style={{width:'8%'}} /><col style={{width:'9%'}} />
-            <col style={{width:'8%'}} /><col style={{width:'9%'}} />
-          </colgroup>
+      <div className="border-t border-gray-100 overflow-x-auto overflow-y-auto" style={{ maxHeight: '65vh' }}>
+        <table className="w-full border-collapse text-[12px]" style={{ tableLayout: 'fixed', minWidth: 900 }}>
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-50 border-b-2 border-gray-100">
-              <Th col="no"     label="ลำดับ"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="addr"   label="บ้านเลขที่"        sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="prefix" label="คำนำหน้า"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="fname"  label="ชื่อ"              sortCol={sortCol} sortDir={sortDir} onSort={handleSort} left />
-              <Th col="lname"  label="นามสกุล"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} left />
-              <Th col="gender" label="เพศ"               sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="age"    label="อายุ(ปี)"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="agem"   label="อายุ(เดือน)"       sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="dob"    label="วันเกิด"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="pid"    label="เลขที่บัตรประชาชน" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} />
-              <Th col="right"  label="สิทธิการรักษา"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} left />
-              <th className={thCls('hbsag')}>HBsAg</th>
-              <th className={thCls('hbunit')}>หน่วยตรวจ HBsAg</th>
-              <th className={thCls('hcv')}>Anti-HCV</th>
-              <th className={thCls('hcvunit')}>หน่วยตรวจ Anti-HCV</th>
+              <Th col="no"     label="ลำดับ"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="3.5%" />
+              <Th col="addr"   label="บ้านเลขที่"        sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="5%" />
+              <Th col="prefix" label="คำนำหน้า"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="5%" />
+              <Th col="fname"  label="ชื่อ"              sortCol={sortCol} sortDir={sortDir} onSort={handleSort} left w="7%" />
+              <Th col="lname"  label="นามสกุล"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} left w="8%" />
+              <Th col="gender" label="เพศ"               sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="4%" />
+              <Th col="age"    label="อายุ(ปี)"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="4%" />
+              {cfg.showAgeM && <Th col="agem" label="อายุ(เดือน)" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="4%" />}
+              <Th col="dob"    label="วันเกิด"           sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="6%" />
+              <Th col="pid"    label="เลขที่บัตรประชาชน" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="10%" />
+              <Th col="right"  label="สิทธิการรักษา"     sortCol={sortCol} sortDir={sortDir} onSort={handleSort} left w="9%" />
+              {cfg.showRegis && <Th col="regis" label="ทะเบียนบ้าน" sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="8%" />}
+              <th className={thCls('hbsag')} style={{width:'8%'}}>HBsAg</th>
+              <th className={thCls('hbunit')} style={{width:'9%'}}>หน่วยตรวจ HBsAg</th>
+              <th className={thCls('hcv')} style={{width:'8%'}}>Anti-HCV</th>
+              <th className={thCls('hcvunit')} style={{width:'9%'}}>หน่วยตรวจ Anti-HCV</th>
             </tr>
           </thead>
           <tbody>
@@ -257,13 +255,14 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo }: Props) {
 }
 
 // ── Sub components ───────────────────────────────────────────────
-function Th({ col, label, sortCol, sortDir, onSort, left }: {
-  col: string; label: string; sortCol: string; sortDir: number; onSort: (c: string) => void; left?: boolean
+function Th({ col, label, sortCol, sortDir, onSort, left, w }: {
+  col: string; label: string; sortCol: string; sortDir: number; onSort: (c: string) => void; left?: boolean; w?: string
 }) {
   const active = sortCol === col
   return (
     <th
       onClick={() => onSort(col)}
+      style={w ? { width: w } : undefined}
       className={cn(
         'px-2.5 py-2.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors',
         left ? 'text-left' : 'text-center',
@@ -294,10 +293,11 @@ function TableRow({ r, i, db, year, cfg, onClick }: {
       <td className="px-2.5 py-2 font-semibold text-gray-900">{r.lname}</td>
       <td className="px-2.5 py-2 text-center text-gray-500">{r.gender}</td>
       <td className="px-2.5 py-2 text-center text-gray-500">{r.age}</td>
-      <td className="px-2.5 py-2 text-center text-gray-400">{r.agem}</td>
+      {cfg.showAgeM && <td className="px-2.5 py-2 text-center text-gray-400">{r.agem}</td>}
       <td className="px-2.5 py-2 text-gray-400 overflow-hidden text-ellipsis">{r.dob}</td>
       <td className="px-2.5 py-2 font-mono text-[10.5px] tracking-tight text-gray-400 overflow-hidden text-ellipsis">{r.pid}</td>
       <td className="px-2.5 py-2 text-[11px] text-gray-400 overflow-hidden text-ellipsis" title={r.right}>{r.right}</td>
+      {cfg.showRegis && <td className="px-2.5 py-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={r.regis}>{r.regis}</td>}
       <td className="px-2.5 py-2 text-center">
         {hbD
           ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-blue-100 text-blue-700">✓ {hbD.split(',')[0].trim()}</span>
@@ -348,6 +348,25 @@ function Pager({ page, total, count, onPage }: {
       <span className="text-[12px] text-gray-400 ml-2">หน้า {page} / {total} · {fmtNum(count)} ราย</span>
     </div>
   )
+}
+
+// ── Export XLSX ──────────────────────────────────────────────────
+async function exportXlsx(rows: TableRow[], db: ScreeningDB, year: string) {
+  const XLSX = (await import('xlsx')).default
+  const headers = ['ลำดับ','หมู่','บ้านเลขที่','คำนำหน้า','ชื่อ','นามสกุล','เพศ','อายุ(ปี)','อายุ(เดือน)','วันเกิด','เลขที่บัตร','สิทธิ','ทะเบียนบ้าน','HBsAg วันที่','หน่วยตรวจ HBsAg','Anti-HCV วันที่','หน่วยตรวจ Anti-HCV']
+  const data = rows.map((r, i) => {
+    const hbI  = getPidInfo(db, r.pid, 'HBsAg')
+    const hcvI = getPidInfo(db, r.pid, 'AntiHCV')
+    const hbD  = fmtDates(hbI.by_year,  year) ?? ''
+    const hcvD = fmtDates(hcvI.by_year, year) ?? ''
+    return [i+1, r.moo, r.addr, r.prefix, r.fname, r.lname, r.gender, r.age, r.agem, r.dob, r.pid, r.right, r.regis, hbD, hbI.unit, hcvD, hcvI.unit]
+  })
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...data])
+  // Column widths
+  ws['!cols'] = [6,8,10,8,12,14,6,7,9,12,18,12,14,14,14,14,14].map(w => ({ wch: w }))
+  const wb = XLSX.utils.book_new()
+  XLSX.utils.book_append_sheet(wb, ws, 'กลุ่มเป้าหมาย')
+  XLSX.writeFile(wb, `hepatitis_screening_${new Date().toISOString().split('T')[0]}.xlsx`)
 }
 
 // ── Export CSV ───────────────────────────────────────────────────

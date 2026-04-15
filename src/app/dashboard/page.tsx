@@ -7,6 +7,7 @@ import { KpiCards }      from '@/components/charts/KpiCards'
 import { OverviewChart } from '@/components/charts/OverviewChart'
 import { DataTable }     from '@/components/table/DataTable'
 import { ImportDrawer }  from '@/components/import/ImportDrawer'
+import { SettingsPanel } from '@/components/modal/SettingsPanel'
 import { useVillageData, useScreeningData, useConfig } from '@/hooks/useData'
 import type { SlotState } from '@/types'
 
@@ -90,6 +91,15 @@ export default function DashboardPage() {
           onSelectMoo={handleSelectMoo}
         />
       </main>
+
+      {/* Settings Panel */}
+      <SettingsPanel
+        open={settingsOpen}
+        cfg={cfg}
+        onClose={() => setSettingsOpen(false)}
+        onSave={saveCfg}
+        onReset={resetCfg}
+      />
 
       {/* Footer */}
       <div className="max-w-[1440px] mx-auto px-8 pb-8">

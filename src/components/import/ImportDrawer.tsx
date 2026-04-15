@@ -13,12 +13,13 @@ interface Props {
   onVillageImported: () => void
 }
 
-const VIL_MOOS = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.9', 'ม.14']
+const DEFAULT_VIL_MOOS = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.9', 'ม.14']
 
 export function ImportDrawer({ open, onClose, slots, setSlots, onScreeningImported, onVillageImported }: Props) {
   const [tab, setTab]         = useState<'csv' | 'vil'>('csv')
   const [vilStatus, setVilStatus] = useState<Record<string, VilSlotState>>({})
   const [loading, setLoading] = useState<string | null>(null)
+  const [vilMoos, setVilMoos] = useState<string[]>(DEFAULT_VIL_MOOS)
   const { showToast }         = useToast()
 
   // ── CSV Import ────────────────────────────────────────────────
@@ -74,6 +75,14 @@ export function ImportDrawer({ open, onClose, slots, setSlots, onScreeningImport
       { year, type: 'AntiHCV', loaded: false, count: 0 },
     ])
   }, [slots, setSlots])
+
+  const addNewMoo = useCallback(() => {
+    const m = prompt('ระบุชื่อหมู่บ้าน (เช่น ม.5):')
+    if (!m || !m.trim()) return
+    const moo = m.trim()
+    if (vilMoos.includes(moo)) { alert(`${moo} มีอยู่แล้ว`); return }
+    setVilMoos(prev => [...prev, moo])
+  }, [vilMoos])
 
   // ── Village Import ────────────────────────────────────────────
   const handleVil = useCallback(async (e: React.ChangeEvent<HTMLInputElement>, moo: string) => {
@@ -268,7 +277,7 @@ export function ImportDrawer({ open, onClose, slots, setSlots, onScreeningImport
           {tab === 'vil' && (
             <div>
               <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-6 mb-4">
-                {VIL_MOOS.map(m => {
+                {vilMoos.map(m => {
                   const st = vilStatus[m] ?? {}
                   const mid = m.replace('.', '_')
                   return (
@@ -299,6 +308,12 @@ export function ImportDrawer({ open, onClose, slots, setSlots, onScreeningImport
                   )
                 })}
               </div>
+              {/* Add new moo */}
+              <button onClick={addNewMoo}
+                className="border-2 border-dashed border-gray-200 rounded-xl px-5 py-3 text-[12.5px] font-semibold text-gray-400 hover:border-emerald-400 hover:text-emerald-500 hover:bg-emerald-50/50 transition-all mt-1">
+                ＋ เพิ่มหมู่ใหม่
+              </button>
+
               <NoteBox items={[
                 '<b>รูปแบบไฟล์:</b> .xlsx แต่ละหมู่ มีคอลัมน์ ลำดับ, บ้านเลขที่, คำนำหน้า, ชื่อ, นามสกุล, เพศ, อายุ(ปี), อายุ(เดือน), วันเกิด, เลขที่บัตรประชาชน, สิทธิการรักษา',
                 '<b>Replace ข้อมูลเดิม</b> ทั้งหมดใน Supabase สำหรับหมู่นั้น (ใช้อัพเดทได้)',
