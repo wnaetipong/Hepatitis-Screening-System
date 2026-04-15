@@ -9,6 +9,7 @@ export async function getAllVillages(): Promise<Record<string, VillageRow[]>> {
     .select('*')
     .order('moo')
     .order('no')
+    .limit(50000)
 
   if (error) throw new Error(error.message)
 
@@ -44,6 +45,7 @@ export async function getAllScreenings(): Promise<ScreeningRow[]> {
   const { data, error } = await sb
     .from('screenings')
     .select('pid, type, year, date, unit')
+    .limit(50000)
 
   if (error) throw new Error(error.message)
   return (data ?? []) as ScreeningRow[]
