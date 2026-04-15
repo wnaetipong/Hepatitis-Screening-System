@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e ' *)",
+      "Bash(npm run *)",
+      "Bash(git *)",
+      "Bash(bash *)",
+      "Skill(update-config)",
+      "Skill(update-config:*)"
+    ]
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash c:/Users/NATIPONG/Downloads/hepatitis-screening/.claude/auto-commit.sh 2>/dev/null || true",
+            "statusMessage": "Auto commit & push..."
+          }
+        ]
+      }
+    ]
+  }
+}

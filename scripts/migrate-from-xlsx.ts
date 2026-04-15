@@ -41,12 +41,23 @@ function fmtDob(val: unknown): string {
   return String(val).trim().split(' ')[0]
 }
 
+function excelSerialToThaiDate(serial: number): string {
+  // Excel serial → UTC date (base: 1899-12-30)
+  // Google Sheet เก็บวันที่เป็น พ.ศ. โดยตรง serial จึงให้ปีที่ถูกต้องอยู่แล้ว
+  const d = new Date((serial - 25569) * 86400 * 1000)
+  const year = d.getUTCFullYear()  // ไม่บวก 543
+  return `${d.getUTCDate()}/${d.getUTCMonth() + 1}/${year}`
+}
+
 function fmtDate(val: unknown): string {
   if (!val) return ''
   if (val instanceof Date) {
     return `${val.getDate()}/${val.getMonth() + 1}/${val.getFullYear()}`
   }
+  // Excel serial number (number หรือ numeric string 5-6 หลัก)
+  if (typeof val === 'number' && val > 40000) return excelSerialToThaiDate(val)
   const s = String(val).trim()
+  if (/^\d{5,6}$/.test(s) && Number(s) > 40000) return excelSerialToThaiDate(Number(s))
   // Format: D/M/YYYY หรือ YYYY-MM-DD
   const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
   if (iso) return `${+iso[3]}/${+iso[2]}/${iso[1]}`
