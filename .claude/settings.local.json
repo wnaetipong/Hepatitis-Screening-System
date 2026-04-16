@@ -6,7 +6,8 @@
       "Bash(git *)",
       "Bash(bash *)",
       "Skill(update-config)",
-      "Skill(update-config:*)"
+      "Skill(update-config:*)",
+      "Bash(npx tsc *)"
     ]
   },
   "hooks": {
