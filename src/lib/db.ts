@@ -61,6 +61,7 @@ export async function getExistingPidDates(
     .select('pid, date')
     .eq('type', type)
     .eq('year', year)
+    .limit(100000)
 
   if (error) throw new Error(error.message)
   const set = new Set<string>()
@@ -71,9 +72,10 @@ export async function getExistingPidDates(
 export async function insertScreenings(rows: ScreeningRow[]): Promise<number> {
   if (!rows.length) return 0
   const sb = createServerClient()
+  // upsert with ignoreDuplicates prevents constraint errors when re-importing
   const { error, count } = await sb
     .from('screenings')
-    .insert(rows, { count: 'exact' })
+    .upsert(rows, { onConflict: 'pid,date,type', ignoreDuplicates: true, count: 'exact' })
 
   if (error) throw new Error(error.message)
   return count ?? rows.length
