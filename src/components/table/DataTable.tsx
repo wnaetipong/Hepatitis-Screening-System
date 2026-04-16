@@ -401,39 +401,39 @@ function TableRowComp({ r, i, db, year, cfg, onClick, onEdit, onDelete }: {
   return (
     <tr onClick={onClick}
       className="cursor-pointer transition-all hover:bg-blue-50/70 border-b border-gray-100 group even:bg-gray-50/40">
-      {cfg.showNo     && <td className="px-3 py-2.5 text-center text-[11px] text-gray-400 font-mono">{i}</td>}
+      {cfg.showNo     && <td className="px-3 py-2.5 text-center text-[12px] text-gray-400 font-mono">{i}</td>}
       {cfg.showAddr   && <td className="px-3 py-2.5 text-center text-[12px] text-gray-500">{(r.addr || '').trim()}</td>}
       {cfg.showPrefix && <td className="px-3 py-2.5 text-center text-[12px] text-gray-500">{r.prefix}</td>}
-      {cfg.showFname  && <td className="px-3 py-2.5 font-semibold text-[13px] text-gray-900">{r.fname}</td>}
-      {cfg.showLname  && <td className="px-3 py-2.5 font-semibold text-[13px] text-gray-900">{r.lname}</td>}
+      {cfg.showFname  && <td className="px-3 py-2.5 font-semibold text-[12px] text-gray-900">{r.fname}</td>}
+      {cfg.showLname  && <td className="px-3 py-2.5 font-semibold text-[12px] text-gray-900">{r.lname}</td>}
       {cfg.showGender && <td className="px-3 py-2.5 text-center">
-        <span className={cn('inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold',
+        <span className={cn('inline-flex px-2 py-0.5 rounded-full text-[12px] font-semibold',
           r.gender === 'ชาย' ? 'bg-blue-50 text-blue-600' : 'bg-pink-50 text-pink-600')}>
           {r.gender}
         </span>
       </td>}
       {cfg.showAge    && <td className="px-3 py-2.5 text-center text-[12px] text-gray-600 font-medium">{r.age}</td>}
-      {cfg.showAgeM   && <td className="px-3 py-2.5 text-center text-[11px] text-gray-400">{r.agem}</td>}
-      {cfg.showDob    && <td className="px-3 py-2.5 text-[11.5px] text-gray-400 overflow-hidden text-ellipsis">{r.dob}</td>}
-      {cfg.showPid    && <td className="px-3 py-2.5 font-mono text-[10.5px] tracking-tight text-gray-400 overflow-hidden text-ellipsis">{r.pid}</td>}
-      {cfg.showRight  && <td className="px-3 py-2.5 text-[11px] text-gray-400 overflow-hidden text-ellipsis" title={r.right}>{r.right}</td>}
-      {cfg.showRegis  && <td className="px-3 py-2.5 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={r.regis}>{r.regis}</td>}
+      {cfg.showAgeM   && <td className="px-3 py-2.5 text-center text-[12px] text-gray-400">{r.agem}</td>}
+      {cfg.showDob    && <td className="px-3 py-2.5 text-[12px] text-gray-500 overflow-hidden text-ellipsis">{r.dob}</td>}
+      {cfg.showPid    && <td className="px-3 py-2.5 font-mono text-[12px] text-gray-400 overflow-hidden text-ellipsis">{r.pid}</td>}
+      {cfg.showRight  && <td className="px-3 py-2.5 text-[12px] text-gray-500 overflow-hidden text-ellipsis" title={r.right}>{r.right}</td>}
+      {cfg.showRegis  && <td className="px-3 py-2.5 text-[12px] text-gray-400 overflow-hidden text-ellipsis" title={r.regis}>{r.regis}</td>}
       {cfg.showHbDate && (
         <td className="px-3 py-2.5 text-center">
           {hbD
-            ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-emerald-100 text-emerald-700 border border-emerald-200">✓ {hbD.split(',')[0].trim()}</span>
+            ? <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-semibold font-mono bg-emerald-100 text-emerald-700 border border-emerald-200">{hbD.split(',')[0].trim()}</span>
             : <span className="text-gray-200 text-[13px]">—</span>}
         </td>
       )}
-      {cfg.showHbUnit  && <td className="px-3 py-2.5 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={hbI.unit}>{hbI.unit}</td>}
+      {cfg.showHbUnit  && <td className="px-3 py-2.5 text-[12px] text-gray-500 overflow-hidden text-ellipsis" title={hbI.unit}>{hbI.unit}</td>}
       {cfg.showHcvDate && (
         <td className="px-3 py-2.5 text-center">
           {hcvD
-            ? <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold font-mono bg-amber-100 text-amber-700 border border-amber-200">✓ {hcvD.split(',')[0].trim()}</span>
+            ? <span className="inline-flex items-center px-2.5 py-1 rounded-full text-[12px] font-semibold font-mono bg-amber-100 text-amber-700 border border-amber-200">{hcvD.split(',')[0].trim()}</span>
             : <span className="text-gray-200 text-[13px]">—</span>}
         </td>
       )}
-      {cfg.showHcvUnit && <td className="px-3 py-2.5 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={hcvI.unit}>{hcvI.unit}</td>}
+      {cfg.showHcvUnit && <td className="px-3 py-2.5 text-[12px] text-gray-500 overflow-hidden text-ellipsis" title={hcvI.unit}>{hcvI.unit}</td>}
       {/* คอลัมน์จัดการอยู่หลังสุด */}
       <td className="px-2 py-2 text-center" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-center gap-1">

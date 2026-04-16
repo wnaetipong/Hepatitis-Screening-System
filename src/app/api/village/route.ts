@@ -2,9 +2,19 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getAllVillages, deleteVillageByMoo, upsertVillages, updateVillageById, deleteVillageById } from '@/lib/db'
 import type { VillageRow } from '@/types'
 
-// GET /api/village — คืนข้อมูลทุกหมู่
-export async function GET() {
+// GET /api/village — คืนข้อมูลทุกหมู่ (หรือ ?countByMoo=1 สำหรับนับจำนวนรายหมู่)
+export async function GET(req: NextRequest) {
   try {
+    const url = new URL(req.url)
+    if (url.searchParams.get('countByMoo') === '1') {
+      const data = await getAllVillages()
+      const counts: Record<string, number> = {}
+      for (const row of data) {
+        const m = row.moo as string
+        counts[m] = (counts[m] ?? 0) + 1
+      }
+      return NextResponse.json({ ok: true, data: counts })
+    }
     const data = await getAllVillages()
     return NextResponse.json({ ok: true, data })
   } catch (err) {

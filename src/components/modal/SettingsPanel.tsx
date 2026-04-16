@@ -56,6 +56,26 @@ export function SettingsPanel({
   const [prevInitTab, setPrevInitTab] = useState(initialTab)
   if (prevInitTab !== initialTab) { setPrevInitTab(initialTab); setPanelTab(initialTab) }
 
+  // โหลดจำนวนกลุ่มเป้าหมายจาก API เมื่อเปิด panel
+  const [vilLoaded, setVilLoaded] = useState(false)
+  if (open && !vilLoaded) {
+    setVilLoaded(true)
+    fetch('/api/village?countByMoo=1')
+      .then(r => r.json())
+      .then(json => {
+        if (json.ok && json.data) {
+          const updates: Record<string, VilSlotState> = {}
+          for (const [moo, count] of Object.entries(json.data as Record<string, number>)) {
+            if (count > 0) updates[moo] = { loaded: true, count }
+          }
+          if (Object.keys(updates).length > 0) {
+            setVilStatus(prev => ({ ...updates, ...prev }))
+          }
+        }
+      }).catch(() => {})
+  }
+  if (!open && vilLoaded) setVilLoaded(false)
+
   function set<K extends keyof AppConfig>(k: K, v: AppConfig[K]) {
     setForm(f => ({ ...f, [k]: v }))
   }
