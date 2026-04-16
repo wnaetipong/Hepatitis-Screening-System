@@ -54,6 +54,20 @@ export async function deleteVillageByMoo(moo: string): Promise<void> {
   if (error) throw new Error(error.message)
 }
 
+export async function updateVillageById(id: number, row: Partial<VillageRow>): Promise<void> {
+  const sb = createServerClient()
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { id: _id, ...fields } = row as VillageRow & { id?: number }
+  const { error } = await sb.from('villages').update(fields).eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
+export async function deleteVillageById(id: number): Promise<void> {
+  const sb = createServerClient()
+  const { error } = await sb.from('villages').delete().eq('id', id)
+  if (error) throw new Error(error.message)
+}
+
 // ── Screening ────────────────────────────────────────────────────
 export async function getAllScreenings(): Promise<ScreeningRow[]> {
   const sb = createServerClient()

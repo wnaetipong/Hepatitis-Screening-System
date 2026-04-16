@@ -89,6 +89,7 @@ export default function DashboardPage() {
           cfg={cfg}
           activeMoo={activeMoo}
           onSelectMoo={handleSelectMoo}
+          onVillageChanged={reloadVillage}
         />
       </main>
 
