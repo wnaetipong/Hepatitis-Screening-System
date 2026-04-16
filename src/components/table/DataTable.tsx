@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo, useCallback } from 'react'
-import type { VillageRow, ScreeningDB, TableRow, AppConfig } from '@/types'
+import type { VillageRow, ScreeningDB, TableRow, AppConfig, ScreeningType } from '@/types'
 import { isScreened, getPidInfo, fmtDates, sortMoos, fmtNum } from '@/lib/utils'
 import { PersonModal } from '../modal/PersonModal'
 import { cn } from '@/lib/utils'
@@ -13,11 +13,15 @@ interface Props {
   activeMoo: string
   onSelectMoo: (moo: string) => void
   onVillageChanged?: () => void
+  onScreeningChanged?: () => void
 }
 
 const PG_OPTIONS = [25, 50, 100, 200]
 
-export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageChanged }: Props) {
+// ── ScreeningEntry สำหรับแก้ไขใน modal ───────────────────────────
+interface ScreeningEntry { year: string; date: string; unit: string }
+
+export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageChanged, onScreeningChanged }: Props) {
   const [search, setSearch]       = useState('')
   const [scr, setScr]             = useState('all')
   const [gender, setGender]       = useState('all')
@@ -75,12 +79,8 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
       let av: string | number = (a as Record<string, string>)[sortCol] ?? ''
       let bv: string | number = (b as Record<string, string>)[sortCol] ?? ''
       if (['age', 'no', 'agem'].includes(sortCol)) {
-        av = parseInt(String(av)) || 0
-        bv = parseInt(String(bv)) || 0
-      } else {
-        av = String(av).toLowerCase()
-        bv = String(bv).toLowerCase()
-      }
+        av = parseInt(String(av)) || 0; bv = parseInt(String(bv)) || 0
+      } else { av = String(av).toLowerCase(); bv = String(bv).toLowerCase() }
       return av < bv ? -sortDir : av > bv ? sortDir : 0
     })
     return rows
@@ -91,14 +91,13 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
 
   const handleSort = useCallback((col: string) => {
     setSortDir(prev => sortCol === col ? prev * -1 : 1)
-    setSortCol(col)
-    setPage(1)
+    setSortCol(col); setPage(1)
   }, [sortCol])
 
   const handleFilter = useCallback(() => setPage(1), [])
 
-  // ── Save edit ──────────────────────────────────────────────────
-  const handleSaveEdit = useCallback(async (updated: TableRow) => {
+  // ── Save village info ──────────────────────────────────────────
+  const handleSaveVillage = useCallback(async (updated: TableRow) => {
     if (!updated.id) return
     setSaving(true)
     try {
@@ -108,19 +107,55 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
         body: JSON.stringify({ id: updated.id, row: updated }),
       })
       const json = await res.json()
-      if (json.ok) {
-        showToast('✓ บันทึกข้อมูลเรียบร้อยแล้ว', true)
-        setEditRow(null)
-        onVillageChanged?.()
-      } else {
-        showToast(`เกิดข้อผิดพลาด: ${json.error}`, false)
-      }
+      if (!json.ok) throw new Error(json.error)
+    } catch (e) {
+      showToast(`เกิดข้อผิดพลาด: ${String(e)}`, false)
+      setSaving(false)
+      throw e
+    }
+    setSaving(false)
+  }, [showToast])
+
+  // ── Save screening entries ─────────────────────────────────────
+  const handleSaveScreening = useCallback(async (
+    pid: string,
+    type: ScreeningType,
+    entries: ScreeningEntry[],
+  ) => {
+    // ส่ง request ทีละปี
+    const promises = entries.map(entry =>
+      fetch('/api/screening', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pid, type, year: entry.year, date: entry.date, unit: entry.unit }),
+      }).then(r => r.json())
+    )
+    const results = await Promise.all(promises)
+    const failed = results.find(r => !r.ok)
+    if (failed) throw new Error(failed.error)
+  }, [])
+
+  // ── Combined save (village + screening) ───────────────────────
+  const handleSaveAll = useCallback(async (
+    updated: TableRow,
+    hbEntries: ScreeningEntry[],
+    hcvEntries: ScreeningEntry[],
+  ) => {
+    setSaving(true)
+    try {
+      await handleSaveVillage(updated)
+      await handleSaveScreening(updated.pid, 'HBsAg',   hbEntries)
+      await handleSaveScreening(updated.pid, 'AntiHCV', hcvEntries)
+      showToast('✓ บันทึกข้อมูลเรียบร้อยแล้ว', true)
+      setEditRow(null)
+      onVillageChanged?.()
+      onScreeningChanged?.()
     } catch (e) {
       showToast(`เกิดข้อผิดพลาด: ${String(e)}`, false)
     } finally {
       setSaving(false)
     }
-  }, [showToast, onVillageChanged])
+  }, [handleSaveVillage, handleSaveScreening, showToast, onVillageChanged, onScreeningChanged])
 
   // ── Confirm delete ────────────────────────────────────────────
   const handleConfirmDelete = useCallback(async () => {
@@ -158,8 +193,7 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
 
   const thCls = (col: string) => cn(
     'px-2.5 py-2.5 text-[9px] font-bold uppercase tracking-wider text-gray-400 cursor-pointer select-none whitespace-nowrap transition-colors',
-    'hover:text-blue-600',
-    sortCol === col && 'text-blue-600',
+    'hover:text-blue-600', sortCol === col && 'text-blue-600',
   )
 
   return (
@@ -171,9 +205,7 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
           toast.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800',
         )}>
           <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',
-            toast.ok ? 'bg-emerald-500' : 'bg-red-500')}>
-            {toast.ok ? '✓' : '✕'}
-          </span>
+            toast.ok ? 'bg-emerald-500' : 'bg-red-500')}>{toast.ok ? '✓' : '✕'}</span>
           {toast.msg}
         </div>
       )}
@@ -207,14 +239,11 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
         {/* Tabs */}
         <div className="flex flex-wrap gap-1.5 mb-4">
           {[['all', 'ทั้งหมด'], ...moos.map(m => [m, m])].map(([v, l]) => (
-            <button key={v}
-              onClick={() => { onSelectMoo(v); setPage(1) }}
-              className={cn(
-                'px-4 py-1.5 text-[12.5px] font-medium rounded-full border transition-all',
+            <button key={v} onClick={() => { onSelectMoo(v); setPage(1) }}
+              className={cn('px-4 py-1.5 text-[12.5px] font-medium rounded-full border transition-all',
                 activeMoo === v
                   ? (v === 'all' ? 'bg-indigo-600 border-indigo-600 text-white font-semibold' : 'bg-blue-600 border-blue-600 text-white font-semibold')
-                  : 'bg-gray-100 border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600',
-              )}>
+                  : 'bg-gray-100 border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
               {l}
             </button>
           ))}
@@ -227,12 +256,9 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
               className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none">
               <circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/>
             </svg>
-            <input
-              className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-gray-200 rounded-lg outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm"
+            <input className="w-full pl-9 pr-3 py-2 text-[13px] bg-white border border-gray-200 rounded-lg outline-none transition-all focus:border-blue-500 focus:ring-2 focus:ring-blue-100 shadow-sm"
               placeholder="ค้นหาชื่อ นามสกุล หรือเลขบัตรประชาชน..."
-              value={search}
-              onChange={e => { setSearch(e.target.value); handleFilter() }}
-            />
+              value={search} onChange={e => { setSearch(e.target.value); handleFilter() }} />
           </div>
           <select className="px-3 py-2 text-[13px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 shadow-sm"
             value={scr} onChange={e => { setScr(e.target.value); handleFilter() }}>
@@ -277,10 +303,9 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
 
       {/* Table */}
       <div className="border-t border-gray-100 overflow-x-auto overflow-y-auto" style={{ maxHeight: '65vh' }}>
-        <table className="w-full border-collapse text-[12px]" style={{ tableLayout: 'fixed', minWidth: 980 }}>
+        <table className="w-full border-collapse text-[12px]" style={{ tableLayout: 'fixed', minWidth: 1020 }}>
           <thead className="sticky top-0 z-10">
             <tr className="bg-gray-50 border-b-2 border-gray-100">
-              <th className="px-2.5 py-2.5 text-[9px] font-bold uppercase tracking-wider text-gray-400 w-[5%]">จัดการ</th>
               <Th col="no"     label="ลำดับ"            sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="3.5%" />
               <Th col="addr"   label="บ้านเลขที่"        sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="5%" />
               <Th col="prefix" label="คำนำหน้า"          sortCol={sortCol} sortDir={sortDir} onSort={handleSort} w="5%" />
@@ -297,12 +322,14 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
               <th className={thCls('hbunit')} style={{width:'9%'}}>หน่วยตรวจ HBsAg</th>
               <th className={thCls('hcv')} style={{width:'8%'}}>Anti-HCV</th>
               <th className={thCls('hcvunit')} style={{width:'9%'}}>หน่วยตรวจ Anti-HCV</th>
+              {/* คอลัมน์จัดการอยู่หลังสุด */}
+              <th className="px-2.5 py-2.5 text-[9px] font-bold uppercase tracking-wider text-gray-400 text-center w-[5%]">จัดการ</th>
             </tr>
           </thead>
           <tbody>
             {pageRows.length === 0 ? (
               <tr>
-                <td colSpan={16} className="text-center py-16 text-gray-400">
+                <td colSpan={17} className="text-center py-16 text-gray-400">
                   <div className="text-3xl mb-3 opacity-40">🔍</div>
                   <div className="text-[13px] font-medium">ไม่พบข้อมูลที่ตรงกับเงื่อนไข</div>
                 </td>
@@ -321,23 +348,19 @@ export function DataTable({ village, db, cfg, activeMoo, onSelectMoo, onVillageC
         </table>
       </div>
 
-      {/* Pager */}
       <Pager page={page} total={totalPages} count={filtered.length} onPage={setPage} />
 
-      {/* View modal */}
-      {modal && <PersonModal row={modal} db={db} year={year} onClose={() => setModal(null)} />}
-
-      {/* Edit modal */}
-      {editRow && (
+      {modal    && <PersonModal row={modal} db={db} year={year} onClose={() => setModal(null)} />}
+      {editRow  && (
         <EditModal
           row={editRow}
+          db={db}
+          allYears={allYears}
           saving={saving}
           onClose={() => setEditRow(null)}
-          onSave={handleSaveEdit}
+          onSave={handleSaveAll}
         />
       )}
-
-      {/* Delete confirm */}
       {deleteRow && (
         <DeleteConfirm
           row={deleteRow}
@@ -356,15 +379,10 @@ function Th({ col, label, sortCol, sortDir, onSort, left, w }: {
 }) {
   const active = sortCol === col
   return (
-    <th
-      onClick={() => onSort(col)}
-      style={w ? { width: w } : undefined}
-      className={cn(
-        'px-2.5 py-2.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors',
+    <th onClick={() => onSort(col)} style={w ? { width: w } : undefined}
+      className={cn('px-2.5 py-2.5 text-[9px] font-bold uppercase tracking-wider cursor-pointer select-none whitespace-nowrap transition-colors',
         left ? 'text-left' : 'text-center',
-        active ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500',
-      )}
-    >
+        active ? 'text-blue-600' : 'text-gray-400 hover:text-blue-500')}>
       {label}{active ? (sortDir === 1 ? ' ↑' : ' ↓') : ''}
     </th>
   )
@@ -384,29 +402,6 @@ function TableRowComp({ r, i, db, year, cfg, onClick, onEdit, onDelete }: {
   return (
     <tr onClick={onClick}
       className="cursor-pointer transition-colors hover:bg-blue-50 border-b border-gray-50 even:bg-gray-50/50 even:hover:bg-blue-50">
-      {/* Action buttons */}
-      <td className="px-2 py-1.5 text-center" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-center gap-1">
-          <button
-            onClick={onEdit}
-            title="แก้ไข"
-            className="w-6 h-6 rounded-md flex items-center justify-center text-blue-500 hover:bg-blue-100 hover:text-blue-700 transition-all"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
-              <path d="M11 2l3 3-8 8H3v-3l8-8z"/>
-            </svg>
-          </button>
-          <button
-            onClick={onDelete}
-            title="ลบ"
-            className="w-6 h-6 rounded-md flex items-center justify-center text-red-400 hover:bg-red-100 hover:text-red-600 transition-all"
-          >
-            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
-              <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/>
-            </svg>
-          </button>
-        </div>
-      </td>
       <td className="px-2.5 py-2 text-center text-[11px] text-gray-400">{i}</td>
       <td className="px-2.5 py-2 text-center text-gray-500">{(r.addr || '').trim()}</td>
       <td className="px-2.5 py-2 text-center text-gray-500">{r.prefix}</td>
@@ -420,28 +415,95 @@ function TableRowComp({ r, i, db, year, cfg, onClick, onEdit, onDelete }: {
       <td className="px-2.5 py-2 text-[11px] text-gray-400 overflow-hidden text-ellipsis" title={r.right}>{r.right}</td>
       {cfg.showRegis && <td className="px-2.5 py-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={r.regis}>{r.regis}</td>}
       <td className="px-2.5 py-2 text-center">
-        {hbD
-          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-blue-100 text-blue-700">✓ {hbD.split(',')[0].trim()}</span>
-          : <span className="text-gray-300 text-[11px]">—</span>}
+        {hbD ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-blue-100 text-blue-700">✓ {hbD.split(',')[0].trim()}</span>
+             : <span className="text-gray-300 text-[11px]">—</span>}
       </td>
       <td className="px-2.5 py-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={hbI.unit}>{hbI.unit}</td>
       <td className="px-2.5 py-2 text-center">
-        {hcvD
-          ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-cyan-100 text-cyan-700">✓ {hcvD.split(',')[0].trim()}</span>
-          : <span className="text-gray-300 text-[11px]">—</span>}
+        {hcvD ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold font-mono bg-cyan-100 text-cyan-700">✓ {hcvD.split(',')[0].trim()}</span>
+              : <span className="text-gray-300 text-[11px]">—</span>}
       </td>
       <td className="px-2.5 py-2 text-[10px] text-gray-400 overflow-hidden text-ellipsis" title={hcvI.unit}>{hcvI.unit}</td>
+      {/* คอลัมน์จัดการอยู่หลังสุด */}
+      <td className="px-2 py-1.5 text-center" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-center gap-1">
+          <button onClick={onEdit} title="แก้ไข"
+            className="w-6 h-6 rounded-md flex items-center justify-center text-blue-500 hover:bg-blue-100 hover:text-blue-700 transition-all">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+              <path d="M11 2l3 3-8 8H3v-3l8-8z"/>
+            </svg>
+          </button>
+          <button onClick={onDelete} title="ลบ"
+            className="w-6 h-6 rounded-md flex items-center justify-center text-red-400 hover:bg-red-100 hover:text-red-600 transition-all">
+            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+              <path d="M2 4h12M5 4V2h6v2M6 7v5M10 7v5M3 4l1 9h8l1-9"/>
+            </svg>
+          </button>
+        </div>
+      </td>
     </tr>
   )
 }
 
-// ── Edit Modal ───────────────────────────────────────────────────
-function EditModal({ row, saving, onClose, onSave }: {
-  row: TableRow; saving: boolean
-  onClose: () => void; onSave: (r: TableRow) => void
+// ── Edit Modal (ข้อมูลส่วนตัว + ผลตรวจ) ─────────────────────────
+function EditModal({ row, db, allYears, saving, onClose, onSave }: {
+  row: TableRow; db: ScreeningDB; allYears: string[]; saving: boolean
+  onClose: () => void
+  onSave: (updated: TableRow, hbEntries: ScreeningEntry[], hcvEntries: ScreeningEntry[]) => void
 }) {
+  const [tab, setTab]   = useState<'info' | 'screening'>('info')
   const [form, setForm] = useState<TableRow>({ ...row })
-  const set = (k: keyof TableRow, v: string) => setForm(f => ({ ...f, [k]: v }))
+
+  // สร้าง initial entries จาก db
+  const initEntries = (type: ScreeningType): ScreeningEntry[] => {
+    const info = db[type]
+    const years = Object.keys(info)
+    if (!years.length) {
+      // ถ้าไม่มีข้อมูลเลย ให้มี 1 row ว่าง
+      const latestYear = allYears[allYears.length - 1] ?? '2569'
+      return [{ year: latestYear, date: '', unit: '' }]
+    }
+    const entries: ScreeningEntry[] = []
+    for (const y of years) {
+      const pidData = info[y][row.pid]
+      if (pidData) {
+        entries.push({
+          year: y,
+          date: pidData.dates[0] ?? '',
+          unit: pidData.unit ?? '',
+        })
+      }
+    }
+    return entries.length ? entries : [{ year: allYears[allYears.length - 1] ?? '2569', date: '', unit: '' }]
+  }
+
+  const [hbEntries,  setHbEntries]  = useState<ScreeningEntry[]>(() => initEntries('HBsAg'))
+  const [hcvEntries, setHcvEntries] = useState<ScreeningEntry[]>(() => initEntries('AntiHCV'))
+
+  const setEntry = (
+    entries: ScreeningEntry[],
+    setter: (e: ScreeningEntry[]) => void,
+    idx: number,
+    key: keyof ScreeningEntry,
+    val: string,
+  ) => {
+    const next = entries.map((e, i) => i === idx ? { ...e, [key]: val } : e)
+    setter(next)
+  }
+
+  const addEntry = (entries: ScreeningEntry[], setter: (e: ScreeningEntry[]) => void) => {
+    const usedYears = new Set(entries.map(e => e.year))
+    const nextYear = allYears.find(y => !usedYears.has(y)) ?? ''
+    setter([...entries, { year: nextYear, date: '', unit: '' }])
+  }
+
+  const removeEntry = (entries: ScreeningEntry[], setter: (e: ScreeningEntry[]) => void, idx: number) => {
+    if (entries.length <= 1) {
+      setter([{ ...entries[0], date: '', unit: '' }])
+    } else {
+      setter(entries.filter((_, i) => i !== idx))
+    }
+  }
 
   const FIELDS: { key: keyof TableRow; label: string; half?: boolean }[] = [
     { key: 'prefix', label: 'คำนำหน้า', half: true },
@@ -459,45 +521,165 @@ function EditModal({ row, saving, onClose, onSave }: {
   ]
 
   return (
-    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
+    <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-4"
       onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[520px] max-h-[90vh] overflow-y-auto animate-modal-in">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[580px] max-h-[90vh] flex flex-col animate-modal-in">
+
         {/* Header */}
-        <div className="px-7 pt-6 pb-4 border-b border-gray-100 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-t-2xl relative">
+        <div className="px-7 pt-6 pb-4 border-b border-gray-100 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-t-2xl relative flex-shrink-0">
           <button onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-lg flex items-center justify-center text-gray-400 hover:bg-gray-100 transition-all">✕</button>
-          <div className="inline-flex items-center gap-1.5 text-[10.5px] font-bold px-3 py-1 rounded-full mb-2.5 bg-blue-100 text-blue-700 uppercase tracking-wider">
+          <div className="inline-flex items-center gap-1.5 text-[10.5px] font-bold px-3 py-1 rounded-full mb-2 bg-blue-100 text-blue-700 uppercase tracking-wider">
             ✏️ แก้ไขข้อมูล
           </div>
           <div className="text-[18px] font-black text-gray-900">{row.prefix}{row.fname} {row.lname}</div>
-          <div className="text-[11px] text-gray-400 font-mono mt-0.5">{row.pid}</div>
+          <div className="text-[11px] text-gray-400 font-mono mt-0.5">{row.pid} · {row.moo}</div>
         </div>
 
-        <div className="px-7 py-5">
-          <div className="grid grid-cols-2 gap-3">
-            {FIELDS.map(({ key, label, half }) => (
-              <div key={key} className={half ? '' : 'col-span-2'}>
-                <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 block">{label}</label>
-                <input
-                  className="w-full px-3 py-2 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
-                  value={String(form[key] ?? '')}
-                  onChange={e => set(key, e.target.value)}
-                />
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-2 mt-6 justify-end">
-            <button onClick={onClose} disabled={saving}
-              className="px-4 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-gray-300 transition-all disabled:opacity-40">
-              ยกเลิก
+        {/* Tabs */}
+        <div className="flex border-b border-gray-100 flex-shrink-0">
+          {([['info', '📋 ข้อมูลส่วนตัว'], ['screening', '🔬 ผลการตรวจ']] as const).map(([k, l]) => (
+            <button key={k} onClick={() => setTab(k)}
+              className={cn('flex-1 py-3 text-[12.5px] font-semibold border-b-2 transition-all',
+                tab === k ? 'border-blue-600 text-blue-600 bg-blue-50/40' : 'border-transparent text-gray-400 hover:text-gray-600')}>
+              {l}
             </button>
-            <button onClick={() => onSave(form)} disabled={saving}
-              className="px-5 py-2 text-[12.5px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-sm disabled:opacity-40 flex items-center gap-2">
-              {saving && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
-              บันทึก
-            </button>
-          </div>
+          ))}
         </div>
+
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-7 py-5">
+
+          {/* ── ข้อมูลส่วนตัว ── */}
+          {tab === 'info' && (
+            <div className="grid grid-cols-2 gap-3">
+              {FIELDS.map(({ key, label, half }) => (
+                <div key={key} className={half ? '' : 'col-span-2'}>
+                  <label className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1 block">{label}</label>
+                  <input
+                    className="w-full px-3 py-2 text-[13px] border border-gray-200 rounded-lg outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-100"
+                    value={String(form[key] ?? '')}
+                    onChange={e => setForm(f => ({ ...f, [key]: e.target.value }))}
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* ── ผลการตรวจ ── */}
+          {tab === 'screening' && (
+            <div className="space-y-6">
+              {/* HBsAg */}
+              <ScreeningSection
+                label="HBsAg (ไวรัสตับอักเสบ บี)"
+                color="blue"
+                entries={hbEntries}
+                allYears={allYears}
+                onChange={(idx, key, val) => setEntry(hbEntries, setHbEntries, idx, key, val)}
+                onAdd={() => addEntry(hbEntries, setHbEntries)}
+                onRemove={idx => removeEntry(hbEntries, setHbEntries, idx)}
+              />
+              {/* Anti-HCV */}
+              <ScreeningSection
+                label="Anti-HCV (ไวรัสตับอักเสบ ซี)"
+                color="cyan"
+                entries={hcvEntries}
+                allYears={allYears}
+                onChange={(idx, key, val) => setEntry(hcvEntries, setHcvEntries, idx, key, val)}
+                onAdd={() => addEntry(hcvEntries, setHcvEntries)}
+                onRemove={idx => removeEntry(hcvEntries, setHcvEntries, idx)}
+              />
+              <p className="text-[11px] text-gray-400 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                ⚠ การบันทึกจะ <b>แทนที่ข้อมูล</b>วันตรวจในปีนั้นทั้งหมด — ถ้าต้องการลบข้อมูลให้เว้นวันที่ไว้ว่าง
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-2 px-7 py-4 border-t border-gray-100 bg-gray-50/60 rounded-b-2xl flex-shrink-0 justify-end">
+          <button onClick={onClose} disabled={saving}
+            className="px-4 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-gray-300 transition-all disabled:opacity-40">
+            ยกเลิก
+          </button>
+          <button onClick={() => onSave(form, hbEntries, hcvEntries)} disabled={saving}
+            className="px-5 py-2 text-[12.5px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-all shadow-sm disabled:opacity-40 flex items-center gap-2">
+            {saving && <span className="w-3.5 h-3.5 border-2 border-white/40 border-t-white rounded-full animate-spin" />}
+            บันทึกทั้งหมด
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── ScreeningSection component ─────────────────────────────────
+function ScreeningSection({ label, color, entries, allYears, onChange, onAdd, onRemove }: {
+  label: string; color: 'blue' | 'cyan'
+  entries: ScreeningEntry[]
+  allYears: string[]
+  onChange: (idx: number, key: keyof ScreeningEntry, val: string) => void
+  onAdd: () => void
+  onRemove: (idx: number) => void
+}) {
+  const colorMap = {
+    blue: { badge: 'bg-blue-100 text-blue-700', border: 'border-blue-200', ring: 'focus:ring-blue-100 focus:border-blue-400', btn: 'text-blue-600 hover:bg-blue-50 border-blue-200' },
+    cyan: { badge: 'bg-cyan-100 text-cyan-700',  border: 'border-cyan-200',  ring: 'focus:ring-cyan-100 focus:border-cyan-400',  btn: 'text-cyan-600 hover:bg-cyan-50 border-cyan-200'   },
+  }[color]
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <span className={cn('text-[11px] font-bold px-2.5 py-1 rounded-full', colorMap.badge)}>{label}</span>
+        <button onClick={onAdd}
+          className={cn('text-[11px] font-semibold px-3 py-1 border rounded-lg transition-all', colorMap.btn)}>
+          + เพิ่มปี
+        </button>
+      </div>
+      <div className="space-y-2.5">
+        {entries.map((entry, idx) => (
+          <div key={idx} className={cn('grid grid-cols-[80px_1fr_1fr_28px] gap-2 items-center p-2.5 rounded-xl border', colorMap.border, 'bg-gray-50/50')}>
+            {/* ปี */}
+            <div>
+              <div className="text-[9px] font-bold text-gray-400 mb-1 uppercase">ปี</div>
+              <select
+                className={cn('w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded-lg outline-none', colorMap.ring)}
+                value={entry.year}
+                onChange={e => onChange(idx, 'year', e.target.value)}>
+                {allYears.map(y => <option key={y} value={y}>{y}</option>)}
+                {entry.year && !allYears.includes(entry.year) && (
+                  <option value={entry.year}>{entry.year}</option>
+                )}
+              </select>
+            </div>
+            {/* วันที่ตรวจ */}
+            <div>
+              <div className="text-[9px] font-bold text-gray-400 mb-1 uppercase">วันที่ตรวจ (ด/ม/ปปปป)</div>
+              <input
+                className={cn('w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded-lg outline-none', colorMap.ring)}
+                placeholder="เช่น 21/2/2567"
+                value={entry.date}
+                onChange={e => onChange(idx, 'date', e.target.value)}
+              />
+            </div>
+            {/* หน่วยตรวจ */}
+            <div>
+              <div className="text-[9px] font-bold text-gray-400 mb-1 uppercase">หน่วยตรวจ</div>
+              <input
+                className={cn('w-full px-2 py-1.5 text-[12px] border border-gray-200 rounded-lg outline-none', colorMap.ring)}
+                placeholder="เช่น รพ.วังทรายพูน"
+                value={entry.unit}
+                onChange={e => onChange(idx, 'unit', e.target.value)}
+              />
+            </div>
+            {/* ลบ */}
+            <button onClick={() => onRemove(idx)}
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-gray-300 hover:text-red-400 hover:bg-red-50 transition-all mt-4">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5">
+                <path d="M4 4l8 8M12 4l-8 8"/>
+              </svg>
+            </button>
+          </div>
+        ))}
       </div>
     </div>
   )

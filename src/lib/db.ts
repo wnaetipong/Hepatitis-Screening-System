@@ -136,6 +136,41 @@ export async function insertScreenings(rows: ScreeningRow[]): Promise<number> {
   return total
 }
 
+// upsert screening สำหรับแก้ไขรายคน (replace ทั้งหมดของ pid+type)
+export async function upsertScreeningForPid(
+  pid: string,
+  type: ScreeningType,
+  year: string,
+  date: string,
+  unit: string,
+): Promise<void> {
+  const sb = createServerClient()
+  // ลบรายการเก่าทั้งหมดของ pid+type+year ก่อน แล้ว insert ใหม่
+  if (date) {
+    await sb.from('screenings').delete()
+      .eq('pid', pid).eq('type', type).eq('year', year)
+    const { error } = await sb.from('screenings').insert({
+      pid, type, year, date, unit, imported_at: new Date().toISOString(),
+    })
+    if (error) throw new Error(error.message)
+  } else {
+    // date ว่าง = ลบทิ้ง
+    await sb.from('screenings').delete()
+      .eq('pid', pid).eq('type', type).eq('year', year)
+  }
+}
+
+export async function deleteScreeningForPid(
+  pid: string,
+  type: ScreeningType,
+  year: string,
+): Promise<void> {
+  const sb = createServerClient()
+  const { error } = await sb.from('screenings').delete()
+    .eq('pid', pid).eq('type', type).eq('year', year)
+  if (error) throw new Error(error.message)
+}
+
 // ── Settings ─────────────────────────────────────────────────────
 export async function getSetting(key: string): Promise<string | null> {
   const sb = createServerClient()

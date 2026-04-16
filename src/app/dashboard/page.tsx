@@ -90,6 +90,7 @@ export default function DashboardPage() {
           activeMoo={activeMoo}
           onSelectMoo={handleSelectMoo}
           onVillageChanged={reloadVillage}
+          onScreeningChanged={reloadScreening}
         />
       </main>
 
