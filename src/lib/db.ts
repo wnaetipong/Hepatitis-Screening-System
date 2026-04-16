@@ -4,33 +4,48 @@ import type { VillageRow, ScreeningRow, ScreeningType } from '@/types'
 // ── Village ──────────────────────────────────────────────────────
 export async function getAllVillages(): Promise<Record<string, VillageRow[]>> {
   const sb = createServerClient()
-  const { data, error } = await sb
-    .from('villages')
-    .select('*')
-    .order('moo')
-    .order('no')
-    .limit(50000)
+  const PAGE = 1000
+  const all: VillageRow[] = []
+  let from = 0
 
-  if (error) throw new Error(error.message)
+  for (;;) {
+    const { data, error } = await sb
+      .from('villages')
+      .select('*')
+      .order('moo')
+      .order('no')
+      .range(from, from + PAGE - 1)
 
-  // group by moo
+    if (error) throw new Error(error.message)
+    if (!data?.length) break
+    all.push(...(data as VillageRow[]))
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+
   const result: Record<string, VillageRow[]> = {}
-  for (const row of (data ?? [])) {
+  for (const row of all) {
     if (!result[row.moo]) result[row.moo] = []
-    result[row.moo].push(row as VillageRow)
+    result[row.moo].push(row)
   }
   return result
 }
 
 export async function upsertVillages(rows: VillageRow[]): Promise<number> {
   const sb = createServerClient()
-  // upsert โดยใช้ pid + moo เป็น unique key
-  const { error, count } = await sb
-    .from('villages')
-    .upsert(rows, { onConflict: 'pid,moo', count: 'exact' })
+  const BATCH = 500
+  let total = 0
 
-  if (error) throw new Error(error.message)
-  return count ?? rows.length
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const chunk = rows.slice(i, i + BATCH)
+    const { error, count } = await sb
+      .from('villages')
+      .upsert(chunk, { onConflict: 'pid,moo', count: 'exact' })
+    if (error) throw new Error(error.message)
+    total += count ?? chunk.length
+  }
+
+  return total
 }
 
 export async function deleteVillageByMoo(moo: string): Promise<void> {
@@ -42,13 +57,24 @@ export async function deleteVillageByMoo(moo: string): Promise<void> {
 // ── Screening ────────────────────────────────────────────────────
 export async function getAllScreenings(): Promise<ScreeningRow[]> {
   const sb = createServerClient()
-  const { data, error } = await sb
-    .from('screenings')
-    .select('pid, type, year, date, unit')
-    .limit(50000)
+  const PAGE = 1000
+  const all: ScreeningRow[] = []
+  let from = 0
 
-  if (error) throw new Error(error.message)
-  return (data ?? []) as ScreeningRow[]
+  for (;;) {
+    const { data, error } = await sb
+      .from('screenings')
+      .select('pid, type, year, date, unit')
+      .range(from, from + PAGE - 1)
+
+    if (error) throw new Error(error.message)
+    if (!data?.length) break
+    all.push(...(data as ScreeningRow[]))
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+
+  return all
 }
 
 export async function getExistingPidDates(
@@ -56,29 +82,44 @@ export async function getExistingPidDates(
   year: string,
 ): Promise<Set<string>> {
   const sb = createServerClient()
-  const { data, error } = await sb
-    .from('screenings')
-    .select('pid, date')
-    .eq('type', type)
-    .eq('year', year)
-    .limit(100000)
-
-  if (error) throw new Error(error.message)
+  const PAGE = 1000
   const set = new Set<string>()
-  for (const row of (data ?? [])) set.add(`${row.pid}|${row.date}`)
+  let from = 0
+
+  for (;;) {
+    const { data, error } = await sb
+      .from('screenings')
+      .select('pid, date')
+      .eq('type', type)
+      .eq('year', year)
+      .range(from, from + PAGE - 1)
+
+    if (error) throw new Error(error.message)
+    if (!data?.length) break
+    for (const row of data) set.add(`${row.pid}|${row.date}`)
+    if (data.length < PAGE) break
+    from += PAGE
+  }
+
   return set
 }
 
 export async function insertScreenings(rows: ScreeningRow[]): Promise<number> {
   if (!rows.length) return 0
   const sb = createServerClient()
-  // upsert with ignoreDuplicates prevents constraint errors when re-importing
-  const { error, count } = await sb
-    .from('screenings')
-    .upsert(rows, { onConflict: 'pid,date,type', ignoreDuplicates: true, count: 'exact' })
+  const BATCH = 500
+  let total = 0
 
-  if (error) throw new Error(error.message)
-  return count ?? rows.length
+  for (let i = 0; i < rows.length; i += BATCH) {
+    const chunk = rows.slice(i, i + BATCH)
+    const { error, count } = await sb
+      .from('screenings')
+      .upsert(chunk, { onConflict: 'pid,date,type', ignoreDuplicates: true, count: 'exact' })
+    if (error) throw new Error(error.message)
+    total += count ?? chunk.length
+  }
+
+  return total
 }
 
 // ── Settings ─────────────────────────────────────────────────────
