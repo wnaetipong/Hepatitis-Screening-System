@@ -78,7 +78,7 @@ export async function getAllScreenings(): Promise<ScreeningRow[]> {
   for (;;) {
     const { data, error } = await sb
       .from('screenings')
-      .select('pid, type, year, date, unit')
+      .select('pid, type, year, date, unit, imported_at')
       .range(from, from + PAGE - 1)
 
     if (error) throw new Error(error.message)
