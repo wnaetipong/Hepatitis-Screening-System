@@ -6,8 +6,8 @@ import { LoadingOverlay } from '@/components/ui/Loading'
 import { KpiCards }      from '@/components/charts/KpiCards'
 import { OverviewChart } from '@/components/charts/OverviewChart'
 import { DataTable }     from '@/components/table/DataTable'
-import { ImportDrawer }  from '@/components/import/ImportDrawer'
 import { SettingsPanel } from '@/components/modal/SettingsPanel'
+import type { PanelTab } from '@/components/modal/SettingsPanel'
 import { useVillageData, useScreeningData, useConfig } from '@/hooks/useData'
 import type { SlotState } from '@/types'
 
@@ -23,11 +23,11 @@ const INIT_SLOTS: SlotState[] = [
 export default function DashboardPage() {
   const { data: village, loading: vLoading, reload: reloadVillage } = useVillageData()
   const { db, loading: sLoading, reload: reloadScreening }          = useScreeningData()
-  const { cfg, save: saveCfg, reset: resetCfg }                    = useConfig()
+  const { cfg, save: saveCfg, reset: resetCfg }                     = useConfig()
 
   const [activeMoo,    setActiveMoo]    = useState('all')
-  const [drawerOpen,   setDrawerOpen]   = useState(false)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  const [panelOpen,    setPanelOpen]    = useState(false)
+  const [panelTab,     setPanelTab]     = useState<PanelTab>('settings')
   const [slots,        setSlots]        = useState<SlotState[]>(INIT_SLOTS)
 
   const isLoading = vLoading || sLoading
@@ -38,6 +38,18 @@ export default function DashboardPage() {
     reloadVillage()
     reloadScreening()
   }, [reloadVillage, reloadScreening])
+
+  // เปิด panel บน tab นำเข้าข้อมูล
+  const openImport = useCallback(() => {
+    setPanelTab('import')
+    setPanelOpen(true)
+  }, [])
+
+  // เปิด panel บน tab ตั้งค่า
+  const openSettings = useCallback(() => {
+    setPanelTab('settings')
+    setPanelOpen(true)
+  }, [])
 
   // Sync slot status from screening db
   const syncedSlots = slots.map(s => ({
@@ -52,22 +64,10 @@ export default function DashboardPage() {
 
       <Topbar
         cfg={cfg}
-        onImport={() => setDrawerOpen(o => !o)}
-        onSettings={() => setSettingsOpen(o => !o)}
+        onImport={openImport}
+        onSettings={openSettings}
         onReload={handleReload}
       />
-
-      <div className="max-w-[1440px] mx-auto px-8">
-        {/* Import Drawer */}
-        <ImportDrawer
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          slots={syncedSlots}
-          setSlots={setSlots}
-          onScreeningImported={reloadScreening}
-          onVillageImported={reloadVillage}
-        />
-      </div>
 
       <main className="max-w-[1440px] mx-auto px-8 py-7">
         {/* KPI */}
@@ -92,13 +92,18 @@ export default function DashboardPage() {
         />
       </main>
 
-      {/* Settings Panel */}
+      {/* Settings + Import panel */}
       <SettingsPanel
-        open={settingsOpen}
+        open={panelOpen}
+        initialTab={panelTab}
         cfg={cfg}
-        onClose={() => setSettingsOpen(false)}
+        onClose={() => setPanelOpen(false)}
         onSave={saveCfg}
         onReset={resetCfg}
+        slots={syncedSlots}
+        setSlots={setSlots}
+        onScreeningImported={reloadScreening}
+        onVillageImported={reloadVillage}
       />
 
       {/* Footer */}
