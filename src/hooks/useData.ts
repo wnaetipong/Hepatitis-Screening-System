@@ -32,6 +32,7 @@ export function useVillageData() {
 // ── Screening data ───────────────────────────────────────────────
 export function useScreeningData() {
   const [db, setDb] = useState<ScreeningDB>({ HBsAg: {}, AntiHCV: {} })
+  const [lastImported, setLastImported] = useState<string>('')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -40,8 +41,10 @@ export function useScreeningData() {
     try {
       const res = await fetch('/api/screening')
       const json = await res.json()
-      if (json.ok) setDb(json.data)
-      else setError(json.error)
+      if (json.ok) {
+        setDb(json.data)
+        setLastImported(json.lastImported ?? '')
+      } else setError(json.error)
     } catch (e) {
       setError(String(e))
     } finally {
@@ -50,7 +53,7 @@ export function useScreeningData() {
   }, [])
 
   useEffect(() => { load() }, [load])
-  return { db, loading, error, reload: load }
+  return { db, lastImported, loading, error, reload: load }
 }
 
 // ── App config ───────────────────────────────────────────────────

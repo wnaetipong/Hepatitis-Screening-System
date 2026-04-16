@@ -3,12 +3,17 @@ import { getAllScreenings, upsertScreeningForPid, deleteScreeningForPid } from '
 import { buildScreeningDB } from '@/lib/utils'
 import type { ScreeningType } from '@/types'
 
-// GET /api/screening — คืน screening DB ทั้งหมด
+// GET /api/screening — คืน screening DB ทั้งหมด + วันที่ import ล่าสุด
 export async function GET() {
   try {
     const rows = await getAllScreenings()
     const data = buildScreeningDB(rows)
-    return NextResponse.json({ ok: true, data })
+    // หาวันที่ import ล่าสุด
+    let lastImported = ''
+    for (const r of rows) {
+      if (r.imported_at && r.imported_at > lastImported) lastImported = r.imported_at
+    }
+    return NextResponse.json({ ok: true, data, lastImported })
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }

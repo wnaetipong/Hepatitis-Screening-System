@@ -7,9 +7,22 @@ interface Props {
   village: Record<string, VillageRow[]>
   db: ScreeningDB
   cfg: AppConfig
+  lastImported?: string
 }
 
-export function KpiCards({ village, db, cfg }: Props) {
+// แปลง ISO → วันที่ภาษาไทย พ.ศ. (ใช้ตัวเลขจาก string โดยตรง ไม่ผ่าน Date object)
+function fmtImportedDate(iso: string): string {
+  if (!iso) return ''
+  try {
+    // iso format: "2026-04-16T04:26:27.38+00:00"
+    const [datePart] = iso.split('T')
+    const [yyyy, mm, dd] = datePart.split('-').map(Number)
+    const year = yyyy + 543
+    return `${dd}/${mm}/${year}`
+  } catch { return '' }
+}
+
+export function KpiCards({ village, db, cfg, lastImported }: Props) {
   const stats = useMemo(() => {
     const allRows = Object.values(village).flat()
     const total = allRows.length
@@ -41,7 +54,9 @@ export function KpiCards({ village, db, cfg }: Props) {
         </div>
         <div className="text-[10px] font-bold tracking-widest uppercase text-gray-400 mb-1.5">กลุ่มเป้าหมายทั้งหมด</div>
         <div className="text-4xl font-black text-gray-900 mb-1">{fmtNum(stats.total)}</div>
-        <div className="text-xs text-gray-400">{stats.mooCount} หมู่บ้าน · ข้อมูล ณ วันนี้</div>
+        <div className="text-xs text-gray-400">
+          {stats.mooCount} หมู่บ้าน · ข้อมูล ณ วันที่ {fmtImportedDate(lastImported ?? '') || '—'}
+        </div>
         <div className="mt-4 h-1.5 bg-gray-100 rounded-full" />
       </div>
 
