@@ -117,22 +117,6 @@ export default function DashboardPage() {
   )
 }
 
-const INIT_SLOTS: SlotState[] = [
-  { year: '2567', type: 'HBsAg',   loaded: false, count: 0 },
-  { year: '2568', type: 'HBsAg',   loaded: false, count: 0 },
-  { year: '2569', type: 'HBsAg',   loaded: false, count: 0 },
-  { year: '2567', type: 'AntiHCV', loaded: false, count: 0 },
-  { year: '2568', type: 'AntiHCV', loaded: false, count: 0 },
-  { year: '2569', type: 'AntiHCV', loaded: false, count: 0 },
-]
-
-export default function DashboardPage() {
-  const { data: village, loading: vLoading, reload: reloadVillage } = useVillageData()
-  const { db, loading: sLoading, reload: reloadScreening }          = useScreeningData()
-  const { cfg, save: saveCfg, reset: resetCfg }                     = useConfig()
-
-  const [activeMoo,    setActiveMoo]    = useState('all')
-  const [panelOpen,    setPanelOpen]    = useState(false)
   const [panelTab,     setPanelTab]     = useState<PanelTab>('settings')
   const [slots,        setSlots]        = useState<SlotState[]>(INIT_SLOTS)
 
