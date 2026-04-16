@@ -22,17 +22,6 @@ interface Props {
   onVillageImported: () => void
 }
 
-// ── Color palette (8 rows × 8 colors) ─────────────────────────────
-const COLOR_ROWS: string[][] = [
-  ['#ef4444','#dc2626','#b91c1c','#f43f5e','#e11d48','#be185d','#9d174d','#881337'],
-  ['#f97316','#ea580c','#c2410c','#fb923c','#f59e0b','#d97706','#b45309','#92400e'],
-  ['#eab308','#ca8a04','#a16207','#facc15','#84cc16','#65a30d','#4d7c0f','#3f6212'],
-  ['#22c55e','#16a34a','#15803d','#166534','#4ade80','#34d399','#10b981','#059669'],
-  ['#047857','#065f46','#14b8a6','#0d9488','#0f766e','#2dd4bf','#06b6d4','#0891b2'],
-  ['#0e7490','#164e63','#3b82f6','#2563eb','#1d4ed8','#1e40af','#60a5fa','#38bdf8'],
-  ['#0ea5e9','#0284c7','#6366f1','#4f46e5','#4338ca','#3730a3','#818cf8','#a5b4fc'],
-  ['#8b5cf6','#7c3aed','#6d28d9','#a78bfa','#c084fc','#d946ef','#a21caf','#86198f'],
-]
 
 const DEFAULT_VIL_MOOS = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.9', 'ม.14']
 
@@ -560,63 +549,34 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
   const inputRef = useRef<HTMLInputElement>(null)
 
   return (
-    <div>
-      {/* Preview + hex + native picker button */}
-      <div className="flex items-center gap-2.5 mb-3">
-        <div
-          className="w-10 h-10 rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-400 transition-all shadow-sm flex-shrink-0 relative overflow-hidden"
-          style={{ background: value }}
-          onClick={() => inputRef.current?.click()}
-          title="คลิกเพื่อเปิด color picker"
-        />
-        <input
-          ref={inputRef}
-          type="color"
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          className="sr-only"
-        />
-        <input
-          className="flex-1 px-2.5 py-2 text-[12.5px] font-mono border border-gray-200 rounded-lg outline-none focus:border-blue-400 uppercase tracking-wider"
-          value={value}
-          onChange={e => {
-            const v = e.target.value
-            if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v)
-          }}
-          maxLength={7}
-        />
-        <button
-          onClick={() => inputRef.current?.click()}
-          className="px-3 py-2 text-[11.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-all whitespace-nowrap flex items-center gap-1.5">
-          <span>🎨</span><span>เลือกสี</span>
-        </button>
-      </div>
-
-      {/* Full palette */}
-      <div className="space-y-1.5">
-        {COLOR_ROWS.map((row, ri) => (
-          <div key={ri} className="flex gap-1.5">
-            {row.map(c => (
-              <button
-                key={c}
-                onClick={() => onChange(c)}
-                title={c}
-                className={cn(
-                  'w-[42px] h-[26px] rounded-[5px] border-2 transition-all hover:scale-110 flex-shrink-0',
-                  value.toLowerCase() === c.toLowerCase()
-                    ? 'border-gray-800 scale-110 shadow-md'
-                    : 'border-transparent hover:border-gray-400',
-                )}
-                style={{ background: c }}
-              />
-            ))}
-          </div>
-        ))}
-      </div>
-
-      <div className="mt-2 text-[10.5px] text-gray-400">
-        คลิกกล่องสีหรือปุ่ม 🎨 เพื่อเลือกสีเองได้อย่างอิสระ
-      </div>
+    <div className="flex items-center gap-2.5">
+      <div
+        className="w-10 h-10 rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-400 transition-all shadow-sm flex-shrink-0"
+        style={{ background: value }}
+        onClick={() => inputRef.current?.click()}
+        title="คลิกเพื่อเลือกสี"
+      />
+      <input
+        ref={inputRef}
+        type="color"
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        className="sr-only"
+      />
+      <input
+        className="flex-1 px-2.5 py-2 text-[12.5px] font-mono border border-gray-200 rounded-lg outline-none focus:border-blue-400 uppercase tracking-wider"
+        value={value}
+        onChange={e => {
+          const v = e.target.value
+          if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v)
+        }}
+        maxLength={7}
+      />
+      <button
+        onClick={() => inputRef.current?.click()}
+        className="px-3 py-2 text-[11.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-all whitespace-nowrap flex items-center gap-1.5">
+        <span>🎨</span><span>เลือกสี</span>
+      </button>
     </div>
   )
 }
