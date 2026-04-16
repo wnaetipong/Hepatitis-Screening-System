@@ -61,14 +61,23 @@ export function useConfig() {
   useEffect(() => {
     try {
       const saved = localStorage.getItem('hepCfg')
-      if (saved) setCfg({ ...DEFAULT_CONFIG, ...JSON.parse(saved) })
+      const logo  = localStorage.getItem('hepLogo') ?? ''
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        setCfg({ ...DEFAULT_CONFIG, ...parsed, logoData: logo })
+      } else if (logo) {
+        setCfg(c => ({ ...c, logoData: logo }))
+      }
     } catch { /* ignore */ }
   }, [])
 
   const save = useCallback(async (newCfg: AppConfig) => {
     setCfg(newCfg)
     try {
-      localStorage.setItem('hepCfg', JSON.stringify(newCfg))
+      // บันทึกโลโก้แยก key เพื่อไม่ให้เกิน localStorage limit
+      const { logoData, ...cfgWithoutLogo } = newCfg
+      localStorage.setItem('hepCfg', JSON.stringify(cfgWithoutLogo))
+      if (logoData) localStorage.setItem('hepLogo', logoData)
       await fetch('/api/settings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

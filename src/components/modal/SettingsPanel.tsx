@@ -18,6 +18,8 @@ interface Props {
   initialTab?: PanelTab
   slots: SlotState[]
   setSlots: (s: SlotState[]) => void
+  vilStatus: Record<string, VilSlotState>
+  setVilStatus: React.Dispatch<React.SetStateAction<Record<string, VilSlotState>>>
   onScreeningImported: () => void
   onVillageImported: () => void
 }
@@ -29,12 +31,13 @@ const DEFAULT_VIL_MOOS = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.9', 'ม.14']
 export function SettingsPanel({
   open, cfg, onClose, onSave, onReset,
   initialTab = 'settings',
-  slots, setSlots, onScreeningImported, onVillageImported,
+  slots, setSlots,
+  vilStatus, setVilStatus,
+  onScreeningImported, onVillageImported,
 }: Props) {
   const [form, setForm]             = useState<AppConfig>(cfg)
   const [panelTab, setPanelTab]     = useState<PanelTab>(initialTab)
   const [importTab, setImportTab]   = useState<ImportSubTab>('csv')
-  const [vilStatus, setVilStatus]   = useState<Record<string, VilSlotState>>({})
   const [loading, setLoading]       = useState<string | null>(null)
   const [vilMoos, setVilMoos]       = useState<string[]>(DEFAULT_VIL_MOOS)
   const [dragOver, setDragOver]     = useState<string | null>(null)
@@ -61,13 +64,22 @@ export function SettingsPanel({
     const file = e.target.files?.[0]
     if (!file) return
     const reader = new FileReader()
-    reader.onload = ev => set('logoData', ev.target?.result as string)
+    reader.onload = ev => {
+      const data = ev.target?.result as string
+      set('logoData', data)
+      // บันทึกโลโก้แยก key เพราะ base64 ใหญ่เกิน localStorage limit
+      try { localStorage.setItem('hepLogo', data) } catch { /* ignore */ }
+    }
     reader.readAsDataURL(file)
     e.target.value = ''
   }
 
   function handleSave() { onSave(form); onClose() }
-  function handleReset() { setForm(DEFAULT_CONFIG); onReset(); onClose() }
+  function handleReset() {
+    setForm(DEFAULT_CONFIG)
+    try { localStorage.removeItem('hepLogo') } catch { /* ignore */ }
+    onReset(); onClose()
+  }
 
   // ── CSV Import ─────────────────────────────────────────────────
   const handleCSVFile = useCallback(async (file: File, idx: number) => {
