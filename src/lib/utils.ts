@@ -8,15 +8,23 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 // ── Date helpers ─────────────────────────────────────────────────
-// แปลง "16/02/2567 10:28" → "16/2/2567"
+// แปลง "16/02/2567 10:28" → "16/2/2567"  (รองรับ leading zeros และ timestamp)
 export function formatThaiDate(raw: string): string {
   try {
-    const dateOnly = raw.trim().split(' ')[0]
+    // ตัด whitespace และ tab ออก
+    const cleaned = raw.trim().replace(/\t/g, '')
+    if (!cleaned) return ''
+    // เอาเฉพาะส่วนวันที่ (ก่อน space)
+    const dateOnly = cleaned.split(' ')[0]
+    // ISO format: YYYY-MM-DD
     const isoMatch = dateOnly.match(/^(\d{4})-(\d{2})-(\d{2})$/)
     if (isoMatch) return `${+isoMatch[3]}/${+isoMatch[2]}/${isoMatch[1]}`
+    // Thai format: DD/MM/YYYY หรือ D/M/YYYY
     const p = dateOnly.split('/')
     if (p.length !== 3) return dateOnly
-    return `${+p[0]}/${+p[1]}/${p[2].trim()}`
+    const d = +p[0], m = +p[1], y = p[2].trim()
+    if (isNaN(d) || isNaN(m) || !y) return dateOnly
+    return `${d}/${m}/${y}`
   } catch { return raw.trim() }
 }
 

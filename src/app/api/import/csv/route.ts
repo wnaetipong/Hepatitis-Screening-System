@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     let skipped = 0, skippedEmpty = 0
 
     for (const row of rows) {
-      const pid  = (row['หมายเลขบัตรประชาชน'] || row['pid'] || '').trim()
+      const pid  = (row['หมายเลขบัตรประชาชน'] || row['pid'] || '').replace(/\t/g, '').trim()
       const date = formatThaiDate(row['วันที่รับบริการ'] || '')
       const unit = (row['หน่วยตรวจ'] || '').trim()
 
