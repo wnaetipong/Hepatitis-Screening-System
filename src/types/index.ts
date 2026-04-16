@@ -95,8 +95,23 @@ export interface AppConfig {
   showChart:    boolean
   showVilStats: boolean
   showDatalabel:boolean
+  // คอลัมน์ในตาราง
+  showNo:       boolean
+  showAddr:     boolean
+  showPrefix:   boolean
+  showFname:    boolean
+  showLname:    boolean
+  showGender:   boolean
+  showAge:      boolean
   showAgeM:     boolean
+  showDob:      boolean
+  showPid:      boolean
+  showRight:    boolean
   showRegis:    boolean
+  showHbDate:   boolean
+  showHbUnit:   boolean
+  showHcvDate:  boolean
+  showHcvUnit:  boolean
   logoData:     string
 }
 
@@ -108,8 +123,22 @@ export const DEFAULT_CONFIG: AppConfig = {
   showChart:    true,
   showVilStats: true,
   showDatalabel:true,
+  showNo:       true,
+  showAddr:     true,
+  showPrefix:   true,
+  showFname:    true,
+  showLname:    true,
+  showGender:   true,
+  showAge:      true,
   showAgeM:     true,
+  showDob:      true,
+  showPid:      true,
+  showRight:    true,
   showRegis:    false,
+  showHbDate:   true,
+  showHbUnit:   true,
+  showHcvDate:  true,
+  showHcvUnit:  true,
   logoData:     '',
 }
 

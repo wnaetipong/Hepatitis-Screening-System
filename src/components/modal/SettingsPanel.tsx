@@ -352,11 +352,31 @@ export function SettingsPanel({
               {/* Display toggles */}
               <Section title="การแสดงผล" color="bg-violet-500">
                 <div className="space-y-3">
-                  <Toggle label="แสดงกราฟภาพรวม"         desc="กราฟแท่งเปรียบเทียบรายหมู่บ้าน"      value={form.showChart}     onChange={v => set('showChart', v)} />
-                  <Toggle label="แสดงการ์ดสถิติหมู่บ้าน"  desc="การ์ดสรุปความครอบคลุมรายหมู่"        value={form.showVilStats}  onChange={v => set('showVilStats', v)} />
-                  <Toggle label="แสดง Data Label บนกราฟ" desc="ตัวเลขเปอร์เซ็นต์บนแท่งกราฟ"         value={form.showDatalabel} onChange={v => set('showDatalabel', v)} />
-                  <Toggle label="แสดงคอลัมน์อายุ (เดือน)" desc="คอลัมน์อายุในหน่วยเดือนในตาราง"     value={form.showAgeM}      onChange={v => set('showAgeM', v)} />
-                  <Toggle label="แสดงคอลัมน์ทะเบียนบ้าน"  desc="เลขทะเบียนบ้านในตาราง"               value={form.showRegis}     onChange={v => set('showRegis', v)} />
+                  <Toggle label="แสดงกราฟภาพรวม"         desc="กราฟแท่งเปรียบเทียบรายหมู่บ้าน"    value={form.showChart}     onChange={v => set('showChart', v)} />
+                  <Toggle label="แสดงการ์ดสถิติหมู่บ้าน"  desc="การ์ดสรุปความครอบคลุมรายหมู่"      value={form.showVilStats}  onChange={v => set('showVilStats', v)} />
+                  <Toggle label="แสดง Data Label บนกราฟ" desc="ตัวเลขเปอร์เซ็นต์บนแท่งกราฟ"       value={form.showDatalabel} onChange={v => set('showDatalabel', v)} />
+                </div>
+              </Section>
+
+              {/* Column toggles */}
+              <Section title="คอลัมน์ในตาราง" color="bg-indigo-500">
+                <div className="space-y-3">
+                  <Toggle label="ลำดับ"              desc="คอลัมน์ลำดับที่"                  value={form.showNo}      onChange={v => set('showNo', v)} />
+                  <Toggle label="บ้านเลขที่"          desc="คอลัมน์บ้านเลขที่"               value={form.showAddr}    onChange={v => set('showAddr', v)} />
+                  <Toggle label="คำนำหน้า"            desc="คอลัมน์คำนำหน้าชื่อ"             value={form.showPrefix}  onChange={v => set('showPrefix', v)} />
+                  <Toggle label="ชื่อ"                desc="คอลัมน์ชื่อ"                     value={form.showFname}   onChange={v => set('showFname', v)} />
+                  <Toggle label="นามสกุล"             desc="คอลัมน์นามสกุล"                  value={form.showLname}   onChange={v => set('showLname', v)} />
+                  <Toggle label="เพศ"                 desc="คอลัมน์เพศ"                      value={form.showGender}  onChange={v => set('showGender', v)} />
+                  <Toggle label="อายุ (ปี)"           desc="คอลัมน์อายุในหน่วยปี"            value={form.showAge}     onChange={v => set('showAge', v)} />
+                  <Toggle label="อายุ (เดือน)"        desc="คอลัมน์อายุในหน่วยเดือน"         value={form.showAgeM}    onChange={v => set('showAgeM', v)} />
+                  <Toggle label="วันเกิด"             desc="คอลัมน์วันเกิด"                  value={form.showDob}     onChange={v => set('showDob', v)} />
+                  <Toggle label="เลขที่บัตรประชาชน"   desc="คอลัมน์เลขบัตรประชาชน 13 หลัก"  value={form.showPid}     onChange={v => set('showPid', v)} />
+                  <Toggle label="สิทธิการรักษา"       desc="คอลัมน์สิทธิการรักษา"            value={form.showRight}   onChange={v => set('showRight', v)} />
+                  <Toggle label="ทะเบียนบ้าน"         desc="คอลัมน์เลขทะเบียนบ้าน"           value={form.showRegis}   onChange={v => set('showRegis', v)} />
+                  <Toggle label="HBsAg วันที่ตรวจ"   desc="คอลัมน์วันที่ตรวจ HBsAg"         value={form.showHbDate}  onChange={v => set('showHbDate', v)} />
+                  <Toggle label="หน่วยตรวจ HBsAg"    desc="คอลัมน์หน่วยตรวจ HBsAg"          value={form.showHbUnit}  onChange={v => set('showHbUnit', v)} />
+                  <Toggle label="Anti-HCV วันที่ตรวจ" desc="คอลัมน์วันที่ตรวจ Anti-HCV"     value={form.showHcvDate} onChange={v => set('showHcvDate', v)} />
+                  <Toggle label="หน่วยตรวจ Anti-HCV"  desc="คอลัมน์หน่วยตรวจ Anti-HCV"      value={form.showHcvUnit} onChange={v => set('showHcvUnit', v)} />
                 </div>
               </Section>
             </div>
