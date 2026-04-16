@@ -352,7 +352,8 @@ function Pager({ page, total, count, onPage }: {
 
 // ── Export XLSX ──────────────────────────────────────────────────
 async function exportXlsx(rows: TableRow[], db: ScreeningDB, year: string) {
-  const XLSX = (await import('xlsx')).default
+  const xlsxModule = await import('xlsx')
+  const XLSX = xlsxModule.default ?? xlsxModule
   const headers = ['ลำดับ','หมู่','บ้านเลขที่','คำนำหน้า','ชื่อ','นามสกุล','เพศ','อายุ(ปี)','อายุ(เดือน)','วันเกิด','เลขที่บัตร','สิทธิ','ทะเบียนบ้าน','HBsAg วันที่','หน่วยตรวจ HBsAg','Anti-HCV วันที่','หน่วยตรวจ Anti-HCV']
   const data = rows.map((r, i) => {
     const hbI  = getPidInfo(db, r.pid, 'HBsAg')

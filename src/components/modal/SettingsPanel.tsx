@@ -133,7 +133,8 @@ export function SettingsPanel({
   const handleVilFile = useCallback(async (file: File, moo: string) => {
     setVilStatus(prev => ({ ...prev, [moo]: { loaded: false, count: 0, loading: true } }))
     try {
-      const XLSX = (await import('xlsx')).default
+      const xlsxModule = await import('xlsx')
+      const XLSX = xlsxModule.default ?? xlsxModule
       const buf  = await file.arrayBuffer()
       const wb   = XLSX.read(buf, { type: 'array', cellDates: true })
       const ws   = wb.Sheets[wb.SheetNames[0]]
