@@ -6,16 +6,15 @@ import type { VillageRow } from '@/types'
 export async function GET(req: NextRequest) {
   try {
     const url = new URL(req.url)
+    const data = await getAllVillages()
     if (url.searchParams.get('countByMoo') === '1') {
-      const data = await getAllVillages()
+      // data เป็น Record<string, VillageRow[]>
       const counts: Record<string, number> = {}
-      for (const row of data) {
-        const m = row.moo as string
-        counts[m] = (counts[m] ?? 0) + 1
+      for (const [moo, rows] of Object.entries(data)) {
+        counts[moo] = rows.length
       }
       return NextResponse.json({ ok: true, data: counts })
     }
-    const data = await getAllVillages()
     return NextResponse.json({ ok: true, data })
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
