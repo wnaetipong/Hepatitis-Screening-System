@@ -277,12 +277,12 @@ export function SettingsPanel({
                 <div className="flex items-center gap-4 mb-4">
                   <div
                     className="w-16 h-16 rounded-full flex items-center justify-center overflow-hidden border-2 border-gray-200 flex-shrink-0 cursor-pointer hover:border-blue-400 transition-all shadow-sm"
-                    style={{ background: form.logoData ? '#fff' : 'linear-gradient(135deg,#2563eb,#0891b2)' }}
+                    style={{ background: form.logoData ? 'transparent' : 'linear-gradient(135deg,#2563eb,#0891b2)' }}
                     onClick={() => logoRef.current?.click()}
                     title="คลิกเพื่อเปลี่ยนโลโก้"
                   >
                     {form.logoData
-                      ? <img src={form.logoData} alt="logo" className="w-16 h-16 object-cover rounded-full" />
+                      ? <img src={form.logoData} alt="logo" className="w-full h-full object-cover" />
                       : <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="w-7 h-7"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                     }
                   </div>

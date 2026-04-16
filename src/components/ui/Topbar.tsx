@@ -15,9 +15,9 @@ export function Topbar({ cfg, onImport, onSettings, onReload }: TopbarProps) {
       {/* LEFT */}
       <div className="flex items-center gap-4">
         <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0 shadow-md overflow-hidden"
-          style={{ background: cfg.logoData ? '#fff' : 'linear-gradient(135deg,#2563eb,#0891b2)' }}>
+          style={{ background: cfg.logoData ? 'transparent' : 'linear-gradient(135deg,#2563eb,#0891b2)' }}>
           {cfg.logoData
-            ? <img src={cfg.logoData} alt="logo" className="w-12 h-12 object-cover rounded-full" />
+            ? <img src={cfg.logoData} alt="logo" className="w-full h-full object-cover" />
             : (
               <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.2"
                 strokeLinecap="round" strokeLinejoin="round" className="w-6 h-6">
