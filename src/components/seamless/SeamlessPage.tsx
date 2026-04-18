@@ -109,50 +109,200 @@ function getReasonLabel(note: string, noteOther: string): string {
 const RIGHTS_LABEL: Record<string, string> = { UCS:'บัตรทอง', WEL:'สวัสดิการข้าราชการ', SSS:'ประกันสังคม', OFC:'ต่างด้าว', LGO:'อปท.' }
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
-// ── Mini Bar Chart (inline SVG) ───────────────────────────────────
+// ── Monthly Chart (SVG) ───────────────────────────────────────────
 function MiniBarChart({ data }: { data: { label: string; b: number; c: number; comp: number }[] }) {
+  const [hoveredIdx, setHoveredIdx] = useState<number|null>(null)
+
+  if (!data.length) return <div className="flex items-center justify-center h-48 text-gray-300 text-sm">ไม่มีข้อมูล</div>
+
+  const W = 900, H = 220
+  const PAD = { t: 48, b: 52, l: 52, r: 24 }
+  const chartW = W - PAD.l - PAD.r
+  const chartH = H - PAD.t - PAD.b
+
   const maxVal = Math.max(...data.map(d => d.b + d.c), 1)
-  const W = 600, H = 160, PAD = { t:16, b:40, l:40, r:16 }
-  const chartW = W - PAD.l - PAD.r, chartH = H - PAD.t - PAD.b
-  const bw = Math.max(4, Math.floor(chartW / data.length / 3))
-  const gap = chartW / data.length
+  // nice round ceiling
+  const magnitude = Math.pow(10, Math.floor(Math.log10(maxVal)))
+  const niceMax = Math.ceil(maxVal / magnitude) * magnitude
+
+  const slotW = chartW / data.length
+  const bw = Math.max(6, Math.min(14, slotW / 2.8))
+  const GRID_LINES = 4
+
+  // polyline points for comp line
+  const linePoints = data.map((d, i) => {
+    const x = PAD.l + slotW * i + slotW / 2
+    const y = PAD.t + chartH * (1 - d.comp / niceMax)
+    return `${x},${y}`
+  }).join(' ')
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height: H}}>
-      {/* grid lines */}
-      {[0,0.25,0.5,0.75,1].map(pct => {
-        const y = PAD.t + chartH * (1 - pct)
-        return <g key={pct}>
-          <line x1={PAD.l} y1={y} x2={W - PAD.r} y2={y} stroke="#f0f0f0" strokeWidth="1"/>
-          <text x={PAD.l - 4} y={y + 4} textAnchor="end" fontSize="9" fill="#aaa">{fmtNum(Math.round(maxVal * pct))}</text>
+    <div className="relative w-full" style={{userSelect:'none'}}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height: H, overflow:'visible'}}>
+        <defs>
+          <linearGradient id="gradB" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6"/>
+            <stop offset="100%" stopColor="#1d4ed8"/>
+          </linearGradient>
+          <linearGradient id="gradC" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#22d3ee"/>
+            <stop offset="100%" stopColor="#0891b2"/>
+          </linearGradient>
+          <linearGradient id="gradComp" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.15"/>
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
+          </linearGradient>
+          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.08"/>
+          </filter>
+        </defs>
+
+        {/* background */}
+        <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} fill="#fafafa" rx="4"/>
+
+        {/* grid lines */}
+        {Array.from({length: GRID_LINES + 1}, (_, i) => {
+          const pct = i / GRID_LINES
+          const val = Math.round(niceMax * pct)
+          const y = PAD.t + chartH * (1 - pct)
+          return (
+            <g key={i}>
+              <line x1={PAD.l} y1={y} x2={PAD.l + chartW} y2={y}
+                stroke={i === 0 ? '#e5e7eb' : '#f3f4f6'} strokeWidth={i === 0 ? 1.5 : 1}/>
+              <text x={PAD.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#9ca3af" fontFamily="monospace">
+                {val >= 1000 ? `${(val/1000).toFixed(1)}k` : val}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* year group separators */}
+        {data.map((d, i) => {
+          if (i === 0) return null
+          const prevYear = data[i-1].label.split('/')[0]
+          const thisYear = d.label.split('/')[0]
+          if (prevYear === thisYear) return null
+          const x = PAD.l + slotW * i
+          return (
+            <g key={`sep-${i}`}>
+              <line x1={x} y1={PAD.t} x2={x} y2={PAD.t + chartH} stroke="#d1d5db" strokeWidth="1" strokeDasharray="4,3"/>
+              <text x={x + 4} y={PAD.t - 8} fontSize="10" fill="#6b7280" fontWeight="600">ปี {thisYear}</text>
+            </g>
+          )
+        })}
+
+        {/* bars */}
+        {data.map((d, i) => {
+          const cx = PAD.l + slotW * i + slotW / 2
+          const hB = (d.b / niceMax) * chartH
+          const hC = (d.c / niceMax) * chartH
+          const isHov = hoveredIdx === i
+          const opacity = hoveredIdx === null ? 1 : isHov ? 1 : 0.4
+
+          return (
+            <g key={d.label}
+              onMouseEnter={() => setHoveredIdx(i)}
+              onMouseLeave={() => setHoveredIdx(null)}
+              style={{cursor:'default', transition:'opacity 0.15s'}}
+              opacity={opacity}
+            >
+              {/* hover bg */}
+              {isHov && <rect x={PAD.l + slotW * i} y={PAD.t} width={slotW} height={chartH} fill="#f0f9ff" rx="0"/>}
+              {/* bar B */}
+              <rect x={cx - bw - 1} y={PAD.t + chartH - hB} width={bw} height={hB}
+                fill="url(#gradB)" rx="3" filter="url(#shadow)"/>
+              {/* bar C */}
+              <rect x={cx + 1} y={PAD.t + chartH - hC} width={bw} height={hC}
+                fill="url(#gradC)" rx="3" filter="url(#shadow)"/>
+            </g>
+          )
+        })}
+
+        {/* comp line area fill */}
+        <polygon
+          points={`${PAD.l + slotW * 0 + slotW/2},${PAD.t + chartH} ${linePoints} ${PAD.l + slotW * (data.length-1) + slotW/2},${PAD.t + chartH}`}
+          fill="url(#gradComp)"/>
+
+        {/* comp polyline */}
+        <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+
+        {/* comp dots */}
+        {data.map((d, i) => {
+          const x = PAD.l + slotW * i + slotW / 2
+          const y = PAD.t + chartH * (1 - d.comp / niceMax)
+          const isHov = hoveredIdx === i
+          return (
+            <circle key={i} cx={x} cy={y} r={isHov ? 5 : 3}
+              fill={isHov ? '#059669' : 'white'} stroke="#10b981" strokeWidth="2"
+              style={{transition: 'r 0.1s'}}/>
+          )
+        })}
+
+        {/* x-axis labels */}
+        {data.map((d, i) => {
+          const x = PAD.l + slotW * i + slotW / 2
+          const mm = parseInt(d.label.split('/')[1])
+          const yy = d.label.split('/')[0].slice(2)
+          const isHov = hoveredIdx === i
+          return (
+            <g key={`lbl-${i}`}>
+              <text x={x} y={PAD.t + chartH + 16} textAnchor="middle" fontSize="10"
+                fill={isHov ? '#1d4ed8' : '#9ca3af'} fontWeight={isHov ? '700' : '400'}>
+                {MONTH_TH[mm]}
+              </text>
+              <text x={x} y={PAD.t + chartH + 28} textAnchor="middle" fontSize="9" fill="#c9d1d9">
+                {yy}
+              </text>
+            </g>
+          )
+        })}
+
+        {/* first year label */}
+        {data.length > 0 && (
+          <text x={PAD.l + 4} y={PAD.t - 8} fontSize="10" fill="#6b7280" fontWeight="600">
+            ปี {data[0].label.split('/')[0]}
+          </text>
+        )}
+
+        {/* hover tooltip */}
+        {hoveredIdx !== null && (() => {
+          const d = data[hoveredIdx]
+          const cx = PAD.l + slotW * hoveredIdx + slotW / 2
+          const tw = 130, th = 82
+          const tx = Math.min(cx - tw/2, W - tw - 8)
+          const ty = PAD.t - th - 8
+          const total = d.b + d.c
+          const compPct = total ? (d.comp/total*100).toFixed(1) : '0'
+          return (
+            <g>
+              <rect x={tx} y={ty} width={tw} height={th} rx="8" fill="white"
+                stroke="#e5e7eb" strokeWidth="1" filter="url(#shadow)"/>
+              <text x={tx+10} y={ty+16} fontSize="10" fontWeight="700" fill="#374151">
+                {MONTH_TH[parseInt(d.label.split('/')[1])]} {d.label.split('/')[0]}
+              </text>
+              <rect x={tx+10} y={ty+23} width="6" height="6" fill="#3b82f6" rx="1"/>
+              <text x={tx+20} y={ty+30} fontSize="9.5" fill="#6b7280">บี: <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text>
+              <rect x={tx+10} y={ty+36} width="6" height="6" fill="#22d3ee" rx="1"/>
+              <text x={tx+20} y={ty+43} fontSize="9.5" fill="#6b7280">ซี: <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text>
+              <circle cx={tx+13} cy={ty+52} r="3" fill="none" stroke="#10b981" strokeWidth="2"/>
+              <text x={tx+20} y={ty+56} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{compPct}%</tspan></text>
+              <text x={tx+10} y={ty+70} fontSize="9" fill="#9ca3af">รวม {total.toLocaleString()} รายการ</text>
+            </g>
+          )
+        })()}
+
+        {/* legend */}
+        <g transform={`translate(${PAD.l}, 8)`}>
+          <rect x="0" y="0" width="10" height="10" fill="url(#gradB)" rx="2"/>
+          <text x="14" y="9" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text>
+          <rect x="84" y="0" width="10" height="10" fill="url(#gradC)" rx="2"/>
+          <text x="98" y="9" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text>
+          <line x1="170" y1="5" x2="184" y2="5" stroke="#10b981" strokeWidth="2"/>
+          <circle cx="177" cy="5" r="2.5" fill="white" stroke="#10b981" strokeWidth="2"/>
+          <text x="188" y="9" fontSize="10" fill="#4b5563">ชดเชยแล้ว</text>
         </g>
-      })}
-      {data.map((d, i) => {
-        const x = PAD.l + gap * i + gap / 2
-        const hB = (d.b / maxVal) * chartH
-        const hC = (d.c / maxVal) * chartH
-        const hComp = (d.comp / maxVal) * chartH
-        const mm = parseInt(d.label.split('/')[1])
-        const yy = d.label.split('/')[0]
-        return (
-          <g key={d.label}>
-            <rect x={x - bw * 1.1} y={PAD.t + chartH - hB} width={bw} height={hB} fill="#2563eb" rx="2" opacity="0.85"/>
-            <rect x={x - bw * 0.1} y={PAD.t + chartH - hC} width={bw} height={hC} fill="#0891b2" rx="2" opacity="0.85"/>
-            <line x1={x + bw*0.4} y1={PAD.t + chartH - hComp} x2={x + bw*0.4} y2={PAD.t + chartH} stroke="#059669" strokeWidth="1.5" strokeDasharray="2,2" opacity="0.6"/>
-            <circle cx={x + bw*0.4} cy={PAD.t + chartH - hComp} r="2.5" fill="#059669"/>
-            <text x={x} y={H - PAD.b + 14} textAnchor="middle" fontSize="9" fill="#888">{MONTH_TH[mm]}</text>
-            <text x={x} y={H - PAD.b + 24} textAnchor="middle" fontSize="8" fill="#bbb">{yy}</text>
-          </g>
-        )
-      })}
-      {/* legend */}
-      <rect x={PAD.l} y={4} width="8" height="8" fill="#2563eb" rx="1"/>
-      <text x={PAD.l + 11} y={12} fontSize="9" fill="#555">ตับอักเสบ บี</text>
-      <rect x={PAD.l + 65} y={4} width="8" height="8" fill="#0891b2" rx="1"/>
-      <text x={PAD.l + 76} y={12} fontSize="9" fill="#555">ตับอักเสบ ซี</text>
-      <circle cx={PAD.l + 142} cy={8} r="3" fill="#059669"/>
-      <text x={PAD.l + 148} y={12} fontSize="9" fill="#555">ชดเชยแล้ว</text>
-    </svg>
+      </svg>
+    </div>
   )
 }
 
