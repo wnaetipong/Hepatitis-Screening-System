@@ -75,18 +75,22 @@ async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; err
     // ต้องหา last row จาก cell keys จริงๆ แทน
     const cellKeys = Object.keys(ws).filter(k => !k.startsWith('!'))
     if (cellKeys.length > 0) {
-      let maxRow = 0, maxCol = 0
+      let maxRow = 0, maxColIdx = 0
       for (const key of cellKeys) {
         const match = key.match(/^([A-Z]+)(\d+)$/)
         if (match) {
           const row = parseInt(match[2])
-          const col = match[1].split('').reduce((acc, c) => acc * 26 + c.charCodeAt(0) - 64, 0)
+          const colIdx = match[1].split('').reduce((acc, c) => acc * 26 + c.charCodeAt(0) - 64, 0)
           if (row > maxRow) maxRow = row
-          if (col > maxCol) maxCol = col
+          if (colIdx > maxColIdx) maxColIdx = colIdx
         }
       }
-      const newRef = `A1:${String.fromCharCode(64 + Math.min(maxCol, 26))}${maxRow}`
-      console.log('[Seamless] original ref:', ws['!ref'], '→ override to:', newRef)
+      // รองรับ 2-letter column เช่น AA, AB (ไฟล์ Seamless มีถึง col AB)
+      const colLetter = maxColIdx > 26
+        ? String.fromCharCode(64 + Math.floor((maxColIdx - 1) / 26)) + String.fromCharCode(65 + (maxColIdx - 1) % 26)
+        : String.fromCharCode(64 + maxColIdx)
+      const newRef = `A1:${colLetter}${maxRow}`
+      console.log('[Seamless] original ref:', ws['!ref'], '→ override to:', newRef, '(maxCol:', maxColIdx, ')')
       ws['!ref'] = newRef
     }
     // ─────────────────────────────────────────────────────────────
