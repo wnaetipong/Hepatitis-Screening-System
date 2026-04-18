@@ -36,98 +36,91 @@ interface SeamlessRow {
 }
 
 // ── Parser ────────────────────────────────────────────────────────
-// อ่าน Excel แบบ raw 2D array แล้ว map column index ตรงๆ
-// โครงสร้างไฟล์ Seamless:
-//   Row 0: ว่าง
-//   Row 1: รายงาน / REP แบบ INDIVIDUAL
-//   Row 2: วันที่จัดพิมพ์
-//   Row 3: โครงการ
-//   Row 4: รอบ
-//   Row 5-6: ว่าง
-//   Row 7: header แถว 1 (col 0=ลำดับที่, 1=REP No., 2=Trans ID, 3=HN, 4=AN, 5=PID, 6=ชื่อ-สกุล ...)
-//   Row 8: header แถว 2 (col 13=จำนวน, 14=ราคาต่อหน่วย ...)
-//   Row 9: ว่าง
-//   Row 10+: ข้อมูล
-//
-// Column mapping ที่แน่นอน (จาก Excel จริง):
-//   0=seq, 1=rep_no, 2=trans_id, 3=hn, 4=AN(ข้าม), 5=pid, 6=name
-//   7=rights, 8=hmain, 9=send_date, 10=service_date, 11=item_seq
-//   12=service_name, 13=qty, 14=price, 15=ceiling, 16=total_claim
-//   17=ps_code, 18=ps_pct%, 19=compensated, 20=not_comp
-//   21=extra, 22=recall, 23=status, 24=note, 25=note_other, 26=hsend
+// Column mapping จากไฟล์ Seamless จริง (raw 2D array):
+// 0=seq, 1=rep_no, 2=trans_id, 3=hn, 4=AN(ข้าม), 5=pid, 6=name
+// 7=rights, 8=hmain, 9=send_date, 10=service_date, 11=item_seq
+// 12=service_name, 13=qty, 14=price, 15=ceiling, 16=total_claim
+// 17=ps_code, 18=ps_pct%, 19=compensated, 20=not_comp
+// 21=extra, 22=recall, 23=status, 24=note, 25=note_other, 26=hsend
+async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; error?: string }> {
+  try {
+    const XLSX = (await import('xlsx')).default
+    const buf = await file.arrayBuffer()
+    const wb = XLSX.read(buf, { type: 'array', cellDates: false })
 
-async function parseSeamlessXlsx(file: File): Promise<SeamlessRow[]> {
-  const XLSX = (await import('xlsx')).default
-  const buf = await file.arrayBuffer()
-  const wb = XLSX.read(buf, { type: 'array', cellDates: false })
-  const ws = wb.Sheets[wb.SheetNames[0]]
+    if (!wb.SheetNames.length) return { rows: [], error: 'ไม่พบ sheet ในไฟล์' }
 
-  // อ่านเป็น raw 2D array — defval='' เพื่อไม่ให้ cell ว่างเป็น undefined
-  const raw = XLSX.utils.sheet_to_json<(string | number)[]>(ws, {
-    header: 1,
-    defval: '',
-    raw: true,
-  }) as (string | number)[][]
+    const ws = wb.Sheets[wb.SheetNames[0]]
 
-  const c = (row: (string | number)[], idx: number): string =>
-    String(row[idx] ?? '').trim()
-  const n = (row: (string | number)[], idx: number): number =>
-    parseFloat(String(row[idx] ?? '0')) || 0
+    // อ่านเป็น raw 2D array
+    const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, {
+      header: 1,
+      defval: '',
+      raw: true,
+    }) as (string | number | null)[][]
 
-  const rows: SeamlessRow[] = []
+    if (!raw.length) return { rows: [], error: 'ไฟล์ว่าง' }
 
-  // หา dataStart: แถวที่ 10 (0-indexed) หรือหาแถวหลัง header
-  let dataStart = 10
-  for (let i = 0; i < Math.min(15, raw.length); i++) {
-    const joined = raw[i].join('|')
-    // แถว header มี "ลำดับที่" และ "REP No." อยู่ใน col 0 และ 1
-    if (joined.includes('ลำดับที่') && joined.includes('REP')) {
-      dataStart = i + 3 // ข้าม header 2 แถว + แถวว่าง 1 แถว
-      break
+    const c = (row: (string | number | null)[], idx: number): string => {
+      const v = row[idx]
+      if (v === null || v === undefined) return ''
+      return String(v).trim()
     }
+    const n = (row: (string | number | null)[], idx: number): number =>
+      parseFloat(String(row[idx] ?? '')) || 0
+
+    // หา dataStart — แถวที่มี header "ลำดับที่" + "REP"
+    let dataStart = 10
+    for (let i = 0; i < Math.min(20, raw.length); i++) {
+      const joined = raw[i].map(v => String(v ?? '')).join('|')
+      if (joined.includes('ลำดับที่') && joined.includes('REP')) {
+        dataStart = i + 3
+        break
+      }
+    }
+
+    const rows: SeamlessRow[] = []
+    for (let i = dataStart; i < raw.length; i++) {
+      const row = raw[i]
+      const repNo   = c(row, 1)
+      const transId = c(row, 2)
+      if (!repNo || !transId) continue
+
+      rows.push({
+        seq:          c(row, 0),
+        rep_no:       repNo,
+        trans_id:     transId,
+        hn:           c(row, 3),
+        pid:          c(row, 5),
+        name:         c(row, 6),
+        rights:       c(row, 7),
+        hmain:        c(row, 8),
+        send_date:    c(row, 9),
+        service_date: c(row, 10),
+        item_seq:     c(row, 11),
+        service_name: c(row, 12),
+        qty:          n(row, 13),
+        price:        n(row, 14),
+        ceiling:      n(row, 15),
+        total_claim:  n(row, 16),
+        ps_code:      c(row, 17),
+        ps_pct:       n(row, 18),
+        compensated:  n(row, 19),
+        not_comp:     n(row, 20),
+        extra:        n(row, 21),
+        recall:       n(row, 22),
+        status:       c(row, 23),
+        note:         c(row, 24),
+        note_other:   c(row, 25),
+        hsend:        c(row, 26),
+        source_file:  file.name,
+      })
+    }
+
+    return { rows }
+  } catch (e) {
+    return { rows: [], error: String(e) }
   }
-
-  for (let i = dataStart; i < raw.length; i++) {
-    const row = raw[i]
-
-    const repNo   = c(row, 1)
-    const transId = c(row, 2)
-
-    // ข้ามแถวที่ไม่มีข้อมูล (ต้องมีทั้ง rep_no และ trans_id)
-    if (!repNo || !transId) continue
-
-    rows.push({
-      seq:          c(row, 0),
-      rep_no:       repNo,
-      trans_id:     transId,
-      hn:           c(row, 3),
-      pid:          c(row, 5),   // col 5 = VCTID,NAPNumber,PID
-      name:         c(row, 6),
-      rights:       c(row, 7),
-      hmain:        c(row, 8),
-      send_date:    c(row, 9),
-      service_date: c(row, 10),
-      item_seq:     c(row, 11),
-      service_name: c(row, 12),
-      qty:          n(row, 13),
-      price:        n(row, 14),
-      ceiling:      n(row, 15),
-      total_claim:  n(row, 16),
-      ps_code:      c(row, 17),
-      ps_pct:       n(row, 18),
-      compensated:  n(row, 19),
-      not_comp:     n(row, 20),
-      extra:        n(row, 21),
-      recall:       n(row, 22),
-      status:       c(row, 23),
-      note:         c(row, 24),
-      note_other:   c(row, 25),
-      hsend:        c(row, 26),
-      source_file:  file.name,
-    })
-  }
-
-  return rows
 }
 
 // ── Helpers ───────────────────────────────────────────────────────
@@ -138,21 +131,21 @@ const isHepC = (s: string) =>
 
 const fmtBaht = (n: number) =>
   n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-const fmtNum = (n: number) => n.toLocaleString('th-TH')
+const fmtNum  = (n: number) => n.toLocaleString('th-TH')
 
 // ── Main Component ────────────────────────────────────────────────
 export function SeamlessPage() {
-  const [rows, setRows]                   = useState<SeamlessRow[]>([])
-  const [dbLoading, setDbLoading]         = useState(true)
-  const [importing, setImporting]         = useState(false)
-  const [dragOver, setDragOver]           = useState(false)
-  const [search, setSearch]               = useState('')
-  const [filterStatus, setFilterStatus]   = useState('all')
-  const [filterType, setFilterType]       = useState('all')
-  const [page, setPage]                   = useState(1)
-  const [toast, setToast]                 = useState<{ msg: string; ok: boolean } | null>(null)
-  const [confirmClear, setConfirmClear]   = useState(false)
+  const [rows, setRows]                     = useState<SeamlessRow[]>([])
+  const [dbLoading, setDbLoading]           = useState(true)
+  const [importing, setImporting]           = useState(false)
   const [importProgress, setImportProgress] = useState('')
+  const [dragOver, setDragOver]             = useState(false)
+  const [search, setSearch]                 = useState('')
+  const [filterStatus, setFilterStatus]     = useState('all')
+  const [filterType, setFilterType]         = useState('all')
+  const [page, setPage]                     = useState(1)
+  const [toast, setToast]                   = useState<{ msg: string; ok: boolean } | null>(null)
+  const [confirmClear, setConfirmClear]     = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const PG = 50
 
@@ -174,32 +167,34 @@ export function SeamlessPage() {
       .finally(() => setDbLoading(false))
   }, [showToast])
 
-  // ── Import ────────────────────────────────────────────────────
-  const handleFiles = useCallback(async (fileList: FileList | null) => {
-    if (!fileList?.length) return
-    setImporting(true)
-    setImportProgress('กำลังอ่านไฟล์...')
+  // ── Process files ─────────────────────────────────────────────
+  const processFiles = useCallback(async (files: File[]) => {
+    const xlsxFiles = files.filter(f => f.name.match(/\.(xlsx|xls)$/i))
+    if (!xlsxFiles.length) {
+      showToast('กรุณาเลือกไฟล์ .xlsx หรือ .xls เท่านั้น', false)
+      return
+    }
 
+    setImporting(true)
     let totalNew = 0
     let totalSkip = 0
 
-    for (const f of Array.from(fileList)) {
-      if (!f.name.match(/\.(xlsx|xls)$/i)) {
-        showToast(`ไฟล์ ${f.name} ไม่ใช่ .xlsx`, false)
+    for (const f of xlsxFiles) {
+      setImportProgress(`กำลัง parse: ${f.name}`)
+      const { rows: parsed, error } = await parseSeamlessXlsx(f)
+
+      if (error) {
+        showToast(`อ่านไฟล์ ${f.name} ไม่สำเร็จ: ${error}`, false)
+        continue
+      }
+      if (!parsed.length) {
+        showToast(`ไม่พบข้อมูลในไฟล์ ${f.name}`, false)
         continue
       }
 
+      setImportProgress(`กำลังบันทึก ${fmtNum(parsed.length)} รายการ → Supabase...`)
+
       try {
-        setImportProgress(`กำลัง parse ไฟล์: ${f.name}`)
-        const parsed = await parseSeamlessXlsx(f)
-
-        if (!parsed.length) {
-          showToast(`ไม่พบข้อมูลในไฟล์ ${f.name}`, false)
-          continue
-        }
-
-        setImportProgress(`กำลังบันทึก ${fmtNum(parsed.length)} รายการ → Supabase...`)
-
         const res = await fetch('/api/seamless', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -211,36 +206,70 @@ export function SeamlessPage() {
           const imported = json.imported ?? 0
           totalNew  += imported
           totalSkip += parsed.length - imported
-
-          // อัปเดต local state — เพิ่มเฉพาะแถวที่ยังไม่มี
           setRows(prev => {
             const existing = new Set(prev.map(r => `${r.trans_id}|${r.item_seq}`))
             const newRows  = parsed.filter(r => !existing.has(`${r.trans_id}|${r.item_seq}`))
             return [...prev, ...newRows]
           })
         } else {
-          showToast(`บันทึกไฟล์ ${f.name} ไม่สำเร็จ: ${json.error}`, false)
+          showToast(`บันทึกไม่สำเร็จ: ${json.error}`, false)
         }
       } catch (e) {
-        showToast(`อ่านไฟล์ ${f.name} ไม่สำเร็จ: ${String(e)}`, false)
+        showToast(`เกิดข้อผิดพลาด: ${String(e)}`, false)
       }
     }
 
-    if (totalNew > 0 || totalSkip > 0) {
-      showToast(`✓ เพิ่มใหม่ ${fmtNum(totalNew)} · ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ`, true)
-    }
+    showToast(
+      totalNew > 0
+        ? `✓ เพิ่มใหม่ ${fmtNum(totalNew)} · ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ`
+        : `ไม่มีข้อมูลใหม่ (ซ้ำทั้งหมด ${fmtNum(totalSkip)} รายการ)`,
+      totalNew > 0,
+    )
     setPage(1)
     setImportProgress('')
     setImporting(false)
   }, [showToast])
 
-  // ── ล้างข้อมูล ────────────────────────────────────────────────
+  // ── File input change ─────────────────────────────────────────
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files ?? [])
+    e.target.value = '' // reset เพื่อให้เลือกไฟล์เดิมซ้ำได้
+    if (files.length) processFiles(files)
+  }, [processFiles])
+
+  // ── Drag & Drop ───────────────────────────────────────────────
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(true)
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setDragOver(false)
+    const files = Array.from(e.dataTransfer.files)
+    if (files.length) processFiles(files)
+  }, [processFiles])
+
+  // ── Click to browse ───────────────────────────────────────────
+  const handleClickBrowse = useCallback(() => {
+    inputRef.current?.click()
+  }, [])
+
+  // ── Clear all ─────────────────────────────────────────────────
   const handleClearAll = useCallback(async () => {
     setConfirmClear(false)
     setImporting(true)
     setImportProgress('กำลังล้างข้อมูล...')
     try {
-      const res = await fetch('/api/seamless', { method: 'DELETE' })
+      const res  = await fetch('/api/seamless', { method: 'DELETE' })
       const json = await res.json()
       if (json.ok) {
         setRows([])
@@ -259,23 +288,19 @@ export function SeamlessPage() {
 
   // ── Filter ────────────────────────────────────────────────────
   const hepRows = useMemo(() =>
-    rows.filter(r => isHepB(r.service_name) || isHepC(r.service_name)),
-    [rows])
+    rows.filter(r => isHepB(r.service_name) || isHepC(r.service_name)), [rows])
 
   const filtered = useMemo(() => {
     let r = filterType === 'hepB' ? hepRows.filter(x => isHepB(x.service_name))
           : filterType === 'hepC' ? hepRows.filter(x => isHepC(x.service_name))
           : hepRows
-
     if (filterStatus !== 'all') r = r.filter(x => x.status === filterStatus)
-
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       r = r.filter(x =>
         x.name.toLowerCase().includes(q) ||
         x.pid.includes(q) ||
         x.rep_no.toLowerCase().includes(q) ||
-        x.trans_id.includes(q) ||
         x.service_date.includes(q)
       )
     }
@@ -290,10 +315,9 @@ export function SeamlessPage() {
     const notComp = hepRows.filter(r => r.status === 'ไม่ชดเชย')
     return {
       total: hepRows.length,
-      hepB: hepB.length, hepC: hepC.length,
-      comp: comp.length, notComp: notComp.length,
+      hepB: hepB.length,  hepC: hepC.length,
+      comp: comp.length,  notComp: notComp.length,
       totalComp:    comp.reduce((a, b) => a + b.compensated, 0),
-      totalClaim:   hepRows.reduce((a, b) => a + b.total_claim, 0),
       totalNotComp: notComp.reduce((a, b) => a + b.total_claim, 0),
       uniqueB: new Set(hepB.map(r => r.pid)).size,
       uniqueC: new Set(hepC.map(r => r.pid)).size,
@@ -309,7 +333,7 @@ export function SeamlessPage() {
     return (
       <div className="flex flex-col items-center justify-center py-32 gap-4">
         <div className="w-10 h-10 border-[3px] border-gray-200 border-t-blue-600 rounded-full animate-spin" />
-        <div className="text-[13px] text-gray-500">กำลังโหลดข้อมูล Seamless จาก Supabase...</div>
+        <div className="text-[13px] text-gray-500">กำลังโหลดข้อมูลจาก Supabase...</div>
       </div>
     )
   }
@@ -317,7 +341,17 @@ export function SeamlessPage() {
   // ── Empty state ───────────────────────────────────────────────
   if (rows.length === 0) {
     return (
-      <div className="max-w-[860px] mx-auto px-8 py-12">
+      <div className="max-w-[820px] mx-auto px-8 py-12">
+        {/* hidden input — วางไว้นอก drop zone */}
+        <input
+          ref={inputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          multiple
+          className="hidden"
+          onChange={handleInputChange}
+        />
+
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full mb-4">
             <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />
@@ -327,59 +361,71 @@ export function SeamlessPage() {
             ติดตามข้อมูลการจ่ายชดเชย<br />
             <span className="text-blue-600">โรคเฉพาะ (REP Individual)</span>
           </h1>
-          <p className="text-[13px] text-gray-500 leading-relaxed">
+          <p className="text-[13px] text-gray-500">
             ข้อมูลจะบันทึกลง Supabase — เปิดใหม่ข้อมูลยังคงอยู่
           </p>
         </div>
 
+        {/* Drop zone */}
         <div
-          onDragOver={e => { e.preventDefault(); setDragOver(true) }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={e => {
-            e.preventDefault(); setDragOver(false)
-            handleFiles(e.dataTransfer.files)
-          }}
-          onClick={() => !importing && inputRef.current?.click()}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
           className={cn(
-            'border-2 border-dashed rounded-2xl p-14 flex flex-col items-center justify-center gap-5 transition-all',
-            importing ? 'cursor-default border-blue-300 bg-blue-50/30' : 'cursor-pointer',
-            dragOver ? 'border-blue-500 bg-blue-50 scale-[1.01]' : !importing && 'border-gray-200 bg-gray-50/50 hover:border-blue-300 hover:bg-blue-50/30',
-          )}>
-
-          {importing ? (
-            <>
-              <div className="w-16 h-16 rounded-2xl bg-blue-100 flex items-center justify-center">
-                <span className="w-8 h-8 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin block" />
-              </div>
-              <div className="text-center">
-                <div className="text-[15px] font-bold text-gray-800 mb-1">กำลังดำเนินการ...</div>
-                <div className="text-[12.5px] text-blue-600 font-medium">{importProgress}</div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center text-3xl transition-all',
-                dragOver ? 'bg-blue-100' : 'bg-gray-100')}>
-                📊
-              </div>
-              <div className="text-center">
-                <div className="text-[15px] font-bold text-gray-800 mb-1">ลากไฟล์มาวางที่นี่</div>
-                <div className="text-[12.5px] text-gray-400">หรือคลิกเพื่อเลือกไฟล์ .xlsx จาก Seamless (รองรับหลายไฟล์)</div>
-              </div>
-              <div className="text-[11.5px] text-gray-500 bg-white border border-gray-200 rounded-xl px-5 py-3.5 text-left max-w-[400px] w-full">
-                <div className="font-bold text-gray-700 mb-2">วิธีดาวน์โหลดไฟล์จาก Seamless:</div>
-                <ol className="space-y-1 list-decimal list-inside text-gray-500">
-                  <li>ไปที่ seamlessfordmis.nhso.go.th</li>
-                  <li>เมนู REP → รายงาน REP แบบ INDIVIDUAL</li>
-                  <li>เลือก Krungthai Digital Health Platform</li>
-                  <li>กด ออกรายงาน → ออกรายงาน (Excel)</li>
-                </ol>
-              </div>
-            </>
+            'border-2 border-dashed rounded-2xl transition-all',
+            dragOver
+              ? 'border-blue-500 bg-blue-50/60 scale-[1.01]'
+              : 'border-gray-200 bg-gray-50/40 hover:border-blue-300 hover:bg-blue-50/20',
           )}
+        >
+          <div className="flex flex-col items-center justify-center gap-5 p-14">
+            {importing ? (
+              <>
+                <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center">
+                  <span className="w-8 h-8 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin block" />
+                </div>
+                <div className="text-center">
+                  <div className="text-[15px] font-bold text-gray-800 mb-1">กำลังดำเนินการ...</div>
+                  <div className="text-[12.5px] text-blue-600 font-medium">{importProgress}</div>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={cn(
+                  'w-16 h-16 rounded-2xl flex items-center justify-center text-3xl transition-all',
+                  dragOver ? 'bg-blue-100 scale-110' : 'bg-gray-100',
+                )}>
+                  {dragOver ? '📂' : '📊'}
+                </div>
+                <div className="text-center">
+                  <div className="text-[15px] font-bold text-gray-800 mb-1">
+                    {dragOver ? 'วางไฟล์ได้เลย' : 'ลากไฟล์มาวางที่นี่'}
+                  </div>
+                  <div className="text-[12.5px] text-gray-400 mb-4">
+                    รองรับหลายไฟล์พร้อมกัน (.xlsx / .xls)
+                  </div>
+                  {/* ปุ่ม browse แยกออกมาชัดเจน */}
+                  <button
+                    type="button"
+                    onClick={handleClickBrowse}
+                    className="px-6 py-2.5 text-[13px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm"
+                  >
+                    เลือกไฟล์จากเครื่อง
+                  </button>
+                </div>
+                <div className="text-[11.5px] text-gray-500 bg-white border border-gray-200 rounded-xl px-5 py-3.5 text-left max-w-[400px] w-full">
+                  <div className="font-bold text-gray-700 mb-2">วิธีดาวน์โหลดไฟล์จาก Seamless:</div>
+                  <ol className="space-y-1 list-decimal list-inside text-gray-400">
+                    <li>ไปที่ seamlessfordmis.nhso.go.th</li>
+                    <li>เมนู REP → รายงาน REP แบบ INDIVIDUAL</li>
+                    <li>เลือก Krungthai Digital Health Platform</li>
+                    <li>กด ออกรายงาน → ออกรายงาน (Excel)</li>
+                  </ol>
+                </div>
+              </>
+            )}
+          </div>
         </div>
-        <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden"
-          onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
       </div>
     )
   }
@@ -387,15 +433,28 @@ export function SeamlessPage() {
   // ── Main Dashboard ────────────────────────────────────────────
   return (
     <div className="max-w-[1440px] mx-auto px-8 py-7">
+      {/* hidden input */}
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".xlsx,.xls"
+        multiple
+        className="hidden"
+        onChange={handleInputChange}
+      />
 
       {/* Toast */}
       {toast && (
         <div className={cn(
           'fixed bottom-7 right-7 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl border text-sm shadow-xl animate-fade-up',
-          toast.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800',
+          toast.ok
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
+            : 'bg-red-50 border-red-200 text-red-800',
         )}>
-          <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',
-            toast.ok ? 'bg-emerald-500' : 'bg-red-500')}>{toast.ok ? '✓' : '✕'}</span>
+          <span className={cn(
+            'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',
+            toast.ok ? 'bg-emerald-500' : 'bg-red-500',
+          )}>{toast.ok ? '✓' : '✕'}</span>
           {toast.msg}
         </div>
       )}
@@ -403,18 +462,20 @@ export function SeamlessPage() {
       {/* Import progress overlay */}
       {importing && (
         <div className="fixed inset-0 bg-gray-900/30 backdrop-blur-sm z-[998] flex items-center justify-center">
-          <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-4 min-w-[300px]">
+          <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-4 min-w-[320px]">
             <span className="w-10 h-10 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin" />
-            <div className="text-[13.5px] font-bold text-gray-800">กำลังดำเนินการ</div>
-            <div className="text-[12px] text-blue-600 text-center">{importProgress}</div>
+            <div className="text-[14px] font-bold text-gray-800">กำลังดำเนินการ</div>
+            <div className="text-[12px] text-blue-600 text-center max-w-[260px]">{importProgress}</div>
           </div>
         </div>
       )}
 
       {/* Confirm Clear */}
       {confirmClear && (
-        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
-          onClick={() => setConfirmClear(false)}>
+        <div
+          className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
+          onClick={() => setConfirmClear(false)}
+        >
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] p-7" onClick={e => e.stopPropagation()}>
             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="w-6 h-6">
@@ -429,14 +490,14 @@ export function SeamlessPage() {
               <div className="text-[11px] text-red-500 mt-2">⚠ ไม่สามารถยกเลิกได้</div>
             </div>
             <div className="flex gap-2 justify-center">
-              <button onClick={() => setConfirmClear(false)}
-                className="px-5 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-gray-300 transition-all">
-                ยกเลิก
-              </button>
-              <button onClick={handleClearAll}
-                className="px-5 py-2 text-[12.5px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all">
-                ล้างข้อมูล
-              </button>
+              <button
+                onClick={() => setConfirmClear(false)}
+                className="px-5 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-gray-300 transition-all"
+              >ยกเลิก</button>
+              <button
+                onClick={handleClearAll}
+                className="px-5 py-2 text-[12.5px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all"
+              >ล้างข้อมูล</button>
             </div>
           </div>
         </div>
@@ -458,16 +519,22 @@ export function SeamlessPage() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => inputRef.current?.click()} disabled={importing}
-            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-blue-50 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-100 transition-all disabled:opacity-40">
+          <button
+            type="button"
+            onClick={handleClickBrowse}
+            disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-blue-50 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-100 transition-all disabled:opacity-40"
+          >
             + เพิ่มไฟล์ .xlsx
           </button>
-          <button onClick={() => setConfirmClear(true)} disabled={importing}
-            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-gray-50 border border-gray-200 text-gray-500 rounded-xl hover:border-red-200 hover:text-red-500 transition-all disabled:opacity-40">
+          <button
+            type="button"
+            onClick={() => setConfirmClear(true)}
+            disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-gray-50 border border-gray-200 text-gray-500 rounded-xl hover:border-red-200 hover:text-red-500 transition-all disabled:opacity-40"
+          >
             🗑 ล้างทั้งหมด
           </button>
-          <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden"
-            onChange={e => { handleFiles(e.target.files); e.target.value = '' }} />
         </div>
       </div>
 
@@ -503,10 +570,16 @@ export function SeamlessPage() {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 mb-5">
-        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี"
-          rows={hepRows.filter(r => isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff" />
-        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี"
-          rows={hepRows.filter(r => isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff" />
+        <SummaryCard
+          title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี"
+          rows={hepRows.filter(r => isHepB(r.service_name))}
+          color="#2563eb" bgColor="#eff6ff"
+        />
+        <SummaryCard
+          title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี"
+          rows={hepRows.filter(r => isHepC(r.service_name))}
+          color="#0891b2" bgColor="#ecfeff"
+        />
       </div>
 
       {/* Table */}
@@ -520,7 +593,7 @@ export function SeamlessPage() {
           <div className="flex flex-wrap gap-2">
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
               {[['all','ทั้งหมด'],['hepB','ตับอักเสบ บี'],['hepC','ตับอักเสบ ซี']].map(([v,l]) => (
-                <button key={v} onClick={() => { setFilterType(v); setPage(1) }}
+                <button key={v} type="button" onClick={() => { setFilterType(v); setPage(1) }}
                   className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',
                     filterType === v ? 'bg-white font-bold text-blue-600 shadow-sm' : 'text-gray-500 hover:text-blue-500')}>
                   {l}
@@ -529,7 +602,7 @@ export function SeamlessPage() {
             </div>
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
               {[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย']].map(([v,l]) => (
-                <button key={v} onClick={() => { setFilterStatus(v); setPage(1) }}
+                <button key={v} type="button" onClick={() => { setFilterStatus(v); setPage(1) }}
                   className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',
                     filterStatus === v ? 'bg-white font-bold text-blue-600 shadow-sm' : 'text-gray-500 hover:text-blue-500')}>
                   {l}
@@ -545,7 +618,7 @@ export function SeamlessPage() {
                 placeholder="ค้นหาชื่อ, PID, REP No..."
                 value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
             </div>
-            <button onClick={() => exportCsv(filtered)}
+            <button type="button" onClick={() => exportCsv(filtered)}
               className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3">
                 <path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/>
@@ -557,16 +630,19 @@ export function SeamlessPage() {
 
         {/* Stats bar */}
         <div className="flex flex-wrap gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-[12px]">
-          <StatChip dot="#6b7280" label="แสดง"      val={fmtNum(filtered.length)}  unit="รายการ" />
+          <StatChip dot="#6b7280" label="แสดง"      val={fmtNum(filtered.length)} unit="รายการ" />
           <div className="w-px bg-gray-200 self-stretch" />
-          <StatChip dot="#059669" label="ชดเชยรวม"  val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit="" />
+          <StatChip dot="#059669" label="ชดเชยรวม"
+            val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit="" />
           <div className="w-px bg-gray-200 self-stretch" />
-          <StatChip dot="#dc2626" label="ไม่ชดเชย"  val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ" />
+          <StatChip dot="#dc2626" label="ไม่ชดเชย"
+            val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ" />
           <div className="w-px bg-gray-200 self-stretch" />
-          <StatChip dot="#2563eb" label="ขอเบิกรวม" val={`฿${fmtBaht(filtered.reduce((a,b)=>a+b.total_claim,0))}`} unit="" />
+          <StatChip dot="#2563eb" label="ขอเบิกรวม"
+            val={`฿${fmtBaht(filtered.reduce((a,b)=>a+b.total_claim,0))}`} unit="" />
         </div>
 
-        {/* Table */}
+        {/* Table body */}
         <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '60vh' }}>
           <table className="w-full border-collapse text-[12px]">
             <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
@@ -585,7 +661,7 @@ export function SeamlessPage() {
                   </td>
                 </tr>
               ) : pageRows.map((r, i) => (
-                <tr key={r.id ?? `${r.trans_id}-${r.item_seq}`}
+                <tr key={r.id ?? `${r.trans_id}-${r.item_seq}-${i}`}
                   className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
                   <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
                   <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.rep_no}</td>
@@ -639,19 +715,20 @@ export function SeamlessPage() {
         {/* Pager */}
         {totalPages > 1 && (
           <div className="flex items-center gap-1.5 px-6 py-4 border-t border-gray-100 flex-wrap">
-            <button disabled={page===1} onClick={()=>setPage(p=>p-1)}
+            <button type="button" disabled={page===1} onClick={()=>setPage(p=>p-1)}
               className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400 hover:text-blue-600 transition-all">‹</button>
             {Array.from({length:Math.min(totalPages,10)},(_,i)=>{
               const p = totalPages<=10 ? i+1 : Math.max(1,Math.min(page-4,totalPages-9))+i
               return (
-                <button key={p} onClick={()=>setPage(p)}
+                <button key={p} type="button" onClick={()=>setPage(p)}
                   className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',
-                    p===page ? 'bg-blue-600 border-blue-600 text-white font-semibold' : 'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
+                    p===page ? 'bg-blue-600 border-blue-600 text-white font-semibold'
+                             : 'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
                   {p}
                 </button>
               )
             })}
-            <button disabled={page===totalPages} onClick={()=>setPage(p=>p+1)}
+            <button type="button" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)}
               className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400 hover:text-blue-600 transition-all">›</button>
             <span className="text-[12px] text-gray-400 ml-2">หน้า {page}/{totalPages} · {fmtNum(filtered.length)} รายการ</span>
           </div>
@@ -674,7 +751,8 @@ function KpiCard({ icon, label, val, sub, sub2, bar, barColor }: {
       <div className="text-[11px] text-gray-400">{sub}</div>
       {sub2 && <div className="text-[12px] font-bold mt-1" style={{color:barColor}}>{sub2}</div>}
       <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700" style={{width:`${bar*100}%`,background:barColor}} />
+        <div className="h-full rounded-full transition-all duration-700"
+          style={{width:`${Math.min(bar*100,100)}%`,background:barColor}} />
       </div>
     </div>
   )
@@ -693,7 +771,6 @@ function SummaryCard({ title, rows, color, bgColor }: {
     reasons[key] = (reasons[key]||0)+1
   }
   const topReasons = Object.entries(reasons).sort((a,b)=>b[1]-a[1]).slice(0,3)
-
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
@@ -754,7 +831,7 @@ function StatChip({ dot, label, val, unit }: { dot:string; label:string; val:str
 }
 
 function exportCsv(rows: SeamlessRow[]) {
-  const headers = ['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','วันที่ส่งข้อมูล','วันที่รับบริการ','รายการบริการ','จำนวน','ราคา','ขอเบิกรวม','ชดเชย','ไม่ชดเชย','สถานะ','หมายเหตุ','ไฟล์ต้นทาง']
+  const headers = ['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','วันที่ส่ง','วันที่บริการ','รายการบริการ','จำนวน','ราคา','ขอเบิกรวม','ชดเชย','ไม่ชดเชย','สถานะ','หมายเหตุ','ไฟล์ต้นทาง']
   const csvRows = rows.map((r,i) => [
     i+1,r.rep_no,r.trans_id,r.hn,r.pid,r.name,r.rights,r.hmain,
     r.send_date,r.service_date,r.service_name,r.qty,r.price,
