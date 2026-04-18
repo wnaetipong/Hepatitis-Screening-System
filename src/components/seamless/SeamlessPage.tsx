@@ -35,46 +35,80 @@ interface SeamlessRow {
   imported_at?: string
 }
 
-// ── Parser ────────────────────────────────────────────────────────
-// Column mapping จากไฟล์ Seamless จริง (raw 2D array):
-// 0=seq, 1=rep_no, 2=trans_id, 3=hn, 4=AN(ข้าม), 5=pid, 6=name
-// 7=rights, 8=hmain, 9=send_date, 10=service_date, 11=item_seq
-// 12=service_name, 13=qty, 14=price, 15=ceiling, 16=total_claim
-// 17=ps_code, 18=ps_pct%, 19=compensated, 20=not_comp
-// 21=extra, 22=recall, 23=status, 24=note, 25=note_other, 26=hsend
-async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; error?: string }> {
+// ── Load SheetJS จาก CDN (หลีกเลี่ยง dynamic import ที่อาจ fail) ──
+let XLSX_LIB: typeof import('xlsx') | null = null
+
+async function loadXLSX() {
+  if (XLSX_LIB) return XLSX_LIB
   try {
-    const XLSX = (await import('xlsx')).default
+    // ลอง import จาก package ก่อน
+    XLSX_LIB = await import('xlsx')
+    console.log('[Seamless] xlsx loaded from package')
+    return XLSX_LIB
+  } catch (e1) {
+    console.warn('[Seamless] package import failed, trying CDN...', e1)
+    // ถ้า fail ให้โหลดจาก CDN
+    await new Promise<void>((resolve, reject) => {
+      if ((window as Window & { XLSX?: unknown }).XLSX) { resolve(); return }
+      const script = document.createElement('script')
+      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+      script.onload = () => { console.log('[Seamless] xlsx loaded from CDN'); resolve() }
+      script.onerror = () => reject(new Error('CDN load failed'))
+      document.head.appendChild(script)
+    })
+    XLSX_LIB = (window as Window & { XLSX: typeof import('xlsx') }).XLSX
+    return XLSX_LIB
+  }
+}
+
+// ── Parser ────────────────────────────────────────────────────────
+async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; error?: string }> {
+  console.log('[Seamless] parseSeamlessXlsx called:', file.name, file.size, 'bytes')
+
+  try {
+    const XLSX = await loadXLSX()
+    console.log('[Seamless] XLSX loaded:', !!XLSX)
+
     const buf = await file.arrayBuffer()
+    console.log('[Seamless] arrayBuffer size:', buf.byteLength)
+
     const wb = XLSX.read(buf, { type: 'array', cellDates: false })
+    console.log('[Seamless] workbook sheets:', wb.SheetNames)
 
     if (!wb.SheetNames.length) return { rows: [], error: 'ไม่พบ sheet ในไฟล์' }
 
     const ws = wb.Sheets[wb.SheetNames[0]]
-
-    // อ่านเป็น raw 2D array
     const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, {
       header: 1,
       defval: '',
       raw: true,
     }) as (string | number | null)[][]
 
+    console.log('[Seamless] raw rows:', raw.length)
+    if (raw.length > 0) console.log('[Seamless] row 0 sample:', raw[0].slice(0, 5))
+    if (raw.length > 10) console.log('[Seamless] row 10 sample:', raw[10].slice(0, 8))
+
     if (!raw.length) return { rows: [], error: 'ไฟล์ว่าง' }
 
     const c = (row: (string | number | null)[], idx: number): string => {
       const v = row[idx]
-      if (v === null || v === undefined) return ''
+      if (v === null || v === undefined || v === '') return ''
       return String(v).trim()
     }
-    const n = (row: (string | number | null)[], idx: number): number =>
-      parseFloat(String(row[idx] ?? '')) || 0
+    const n = (row: (string | number | null)[], idx: number): number => {
+      const v = row[idx]
+      if (v === null || v === undefined || v === '') return 0
+      const parsed = parseFloat(String(v))
+      return isNaN(parsed) ? 0 : parsed
+    }
 
-    // หา dataStart — แถวที่มี header "ลำดับที่" + "REP"
+    // หา dataStart
     let dataStart = 10
     for (let i = 0; i < Math.min(20, raw.length); i++) {
       const joined = raw[i].map(v => String(v ?? '')).join('|')
       if (joined.includes('ลำดับที่') && joined.includes('REP')) {
         dataStart = i + 3
+        console.log('[Seamless] header found at row', i, '→ dataStart:', dataStart)
         break
       }
     }
@@ -117,8 +151,12 @@ async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; err
       })
     }
 
+    console.log('[Seamless] parsed rows:', rows.length)
+    if (rows.length > 0) console.log('[Seamless] first row:', rows[0])
+
     return { rows }
   } catch (e) {
+    console.error('[Seamless] parse error:', e)
     return { rows: [], error: String(e) }
   }
 }
@@ -131,7 +169,7 @@ const isHepC = (s: string) =>
 
 const fmtBaht = (n: number) =>
   n.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 2 })
-const fmtNum  = (n: number) => n.toLocaleString('th-TH')
+const fmtNum = (n: number) => n.toLocaleString('th-TH')
 
 // ── Main Component ────────────────────────────────────────────────
 export function SeamlessPage() {
@@ -154,7 +192,7 @@ export function SeamlessPage() {
     setTimeout(() => setToast(null), 5000)
   }, [])
 
-  // ── โหลดจาก Supabase ─────────────────────────────────────────
+  // ── Load from Supabase ────────────────────────────────────────
   useEffect(() => {
     setDbLoading(true)
     fetch('/api/seamless')
@@ -169,7 +207,9 @@ export function SeamlessPage() {
 
   // ── Process files ─────────────────────────────────────────────
   const processFiles = useCallback(async (files: File[]) => {
-    const xlsxFiles = files.filter(f => f.name.match(/\.(xlsx|xls)$/i))
+    console.log('[Seamless] processFiles called, count:', files.length)
+
+    const xlsxFiles = files.filter(f => /\.(xlsx|xls)$/i.test(f.name))
     if (!xlsxFiles.length) {
       showToast('กรุณาเลือกไฟล์ .xlsx หรือ .xls เท่านั้น', false)
       return
@@ -181,6 +221,8 @@ export function SeamlessPage() {
 
     for (const f of xlsxFiles) {
       setImportProgress(`กำลัง parse: ${f.name}`)
+      console.log('[Seamless] processing file:', f.name)
+
       const { rows: parsed, error } = await parseSeamlessXlsx(f)
 
       if (error) {
@@ -193,6 +235,7 @@ export function SeamlessPage() {
       }
 
       setImportProgress(`กำลังบันทึก ${fmtNum(parsed.length)} รายการ → Supabase...`)
+      console.log('[Seamless] sending to API:', parsed.length, 'rows')
 
       try {
         const res = await fetch('/api/seamless', {
@@ -201,6 +244,7 @@ export function SeamlessPage() {
           body: JSON.stringify({ rows: parsed }),
         })
         const json = await res.json()
+        console.log('[Seamless] API response:', json)
 
         if (json.ok) {
           const imported = json.imported ?? 0
@@ -215,6 +259,7 @@ export function SeamlessPage() {
           showToast(`บันทึกไม่สำเร็จ: ${json.error}`, false)
         }
       } catch (e) {
+        console.error('[Seamless] API error:', e)
         showToast(`เกิดข้อผิดพลาด: ${String(e)}`, false)
       }
     }
@@ -222,7 +267,7 @@ export function SeamlessPage() {
     showToast(
       totalNew > 0
         ? `✓ เพิ่มใหม่ ${fmtNum(totalNew)} · ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ`
-        : `ไม่มีข้อมูลใหม่ (ซ้ำทั้งหมด ${fmtNum(totalSkip)} รายการ)`,
+        : `ไม่มีข้อมูลใหม่ (ซ้ำ ${fmtNum(totalSkip)} รายการ)`,
       totalNew > 0,
     )
     setPage(1)
@@ -230,10 +275,11 @@ export function SeamlessPage() {
     setImporting(false)
   }, [showToast])
 
-  // ── File input change ─────────────────────────────────────────
+  // ── File input ────────────────────────────────────────────────
   const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    console.log('[Seamless] input change, files:', e.target.files?.length)
     const files = Array.from(e.target.files ?? [])
-    e.target.value = '' // reset เพื่อให้เลือกไฟล์เดิมซ้ำได้
+    e.target.value = ''
     if (files.length) processFiles(files)
   }, [processFiles])
 
@@ -254,12 +300,13 @@ export function SeamlessPage() {
     e.preventDefault()
     e.stopPropagation()
     setDragOver(false)
+    console.log('[Seamless] drop event, files:', e.dataTransfer.files.length)
     const files = Array.from(e.dataTransfer.files)
     if (files.length) processFiles(files)
   }, [processFiles])
 
-  // ── Click to browse ───────────────────────────────────────────
   const handleClickBrowse = useCallback(() => {
+    console.log('[Seamless] browse clicked')
     inputRef.current?.click()
   }, [])
 
@@ -271,22 +318,14 @@ export function SeamlessPage() {
     try {
       const res  = await fetch('/api/seamless', { method: 'DELETE' })
       const json = await res.json()
-      if (json.ok) {
-        setRows([])
-        setPage(1)
-        showToast('✓ ล้างข้อมูลทั้งหมดเรียบร้อย', true)
-      } else {
-        showToast(`ล้างไม่สำเร็จ: ${json.error}`, false)
-      }
+      if (json.ok) { setRows([]); setPage(1); showToast('✓ ล้างข้อมูลทั้งหมดเรียบร้อย', true) }
+      else showToast(`ล้างไม่สำเร็จ: ${json.error}`, false)
     } catch (e) {
       showToast(`เกิดข้อผิดพลาด: ${String(e)}`, false)
-    } finally {
-      setImportProgress('')
-      setImporting(false)
-    }
+    } finally { setImportProgress(''); setImporting(false) }
   }, [showToast])
 
-  // ── Filter ────────────────────────────────────────────────────
+  // ── Filters ───────────────────────────────────────────────────
   const hepRows = useMemo(() =>
     rows.filter(r => isHepB(r.service_name) || isHepC(r.service_name)), [rows])
 
@@ -297,27 +336,22 @@ export function SeamlessPage() {
     if (filterStatus !== 'all') r = r.filter(x => x.status === filterStatus)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
-      r = r.filter(x =>
-        x.name.toLowerCase().includes(q) ||
-        x.pid.includes(q) ||
-        x.rep_no.toLowerCase().includes(q) ||
-        x.service_date.includes(q)
-      )
+      r = r.filter(x => x.name.toLowerCase().includes(q) || x.pid.includes(q) || x.rep_no.toLowerCase().includes(q) || x.service_date.includes(q))
     }
     return r
   }, [hepRows, filterType, filterStatus, search])
 
   // ── KPI ───────────────────────────────────────────────────────
   const stats = useMemo(() => {
-    const hepB    = hepRows.filter(r => isHepB(r.service_name))
-    const hepC    = hepRows.filter(r => isHepC(r.service_name))
-    const comp    = hepRows.filter(r => r.status === 'ชดเชย')
+    const hepB = hepRows.filter(r => isHepB(r.service_name))
+    const hepC = hepRows.filter(r => isHepC(r.service_name))
+    const comp = hepRows.filter(r => r.status === 'ชดเชย')
     const notComp = hepRows.filter(r => r.status === 'ไม่ชดเชย')
     return {
       total: hepRows.length,
-      hepB: hepB.length,  hepC: hepC.length,
-      comp: comp.length,  notComp: notComp.length,
-      totalComp:    comp.reduce((a, b) => a + b.compensated, 0),
+      hepB: hepB.length, hepC: hepC.length,
+      comp: comp.length, notComp: notComp.length,
+      totalComp: comp.reduce((a, b) => a + b.compensated, 0),
       totalNotComp: notComp.reduce((a, b) => a + b.total_claim, 0),
       uniqueB: new Set(hepB.map(r => r.pid)).size,
       uniqueC: new Set(hepC.map(r => r.pid)).size,
@@ -342,15 +376,9 @@ export function SeamlessPage() {
   if (rows.length === 0) {
     return (
       <div className="max-w-[820px] mx-auto px-8 py-12">
-        {/* hidden input — วางไว้นอก drop zone */}
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".xlsx,.xls"
-          multiple
-          className="hidden"
-          onChange={handleInputChange}
-        />
+        {/* input อยู่นอก drop zone */}
+        <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden"
+          onChange={handleInputChange} />
 
         <div className="mb-8">
           <div className="inline-flex items-center gap-2 text-[11px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1.5 rounded-full mb-4">
@@ -361,71 +389,56 @@ export function SeamlessPage() {
             ติดตามข้อมูลการจ่ายชดเชย<br />
             <span className="text-blue-600">โรคเฉพาะ (REP Individual)</span>
           </h1>
-          <p className="text-[13px] text-gray-500">
-            ข้อมูลจะบันทึกลง Supabase — เปิดใหม่ข้อมูลยังคงอยู่
-          </p>
+          <p className="text-[13px] text-gray-500">ข้อมูลจะบันทึกลง Supabase — เปิดใหม่ข้อมูลยังคงอยู่</p>
         </div>
 
-        {/* Drop zone */}
-        <div
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-          className={cn(
-            'border-2 border-dashed rounded-2xl transition-all',
-            dragOver
-              ? 'border-blue-500 bg-blue-50/60 scale-[1.01]'
-              : 'border-gray-200 bg-gray-50/40 hover:border-blue-300 hover:bg-blue-50/20',
-          )}
-        >
-          <div className="flex flex-col items-center justify-center gap-5 p-14">
-            {importing ? (
-              <>
-                <div className="w-16 h-16 rounded-2xl bg-blue-50 flex items-center justify-center">
-                  <span className="w-8 h-8 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin block" />
-                </div>
-                <div className="text-center">
-                  <div className="text-[15px] font-bold text-gray-800 mb-1">กำลังดำเนินการ...</div>
-                  <div className="text-[12.5px] text-blue-600 font-medium">{importProgress}</div>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className={cn(
-                  'w-16 h-16 rounded-2xl flex items-center justify-center text-3xl transition-all',
-                  dragOver ? 'bg-blue-100 scale-110' : 'bg-gray-100',
-                )}>
-                  {dragOver ? '📂' : '📊'}
-                </div>
-                <div className="text-center">
-                  <div className="text-[15px] font-bold text-gray-800 mb-1">
-                    {dragOver ? 'วางไฟล์ได้เลย' : 'ลากไฟล์มาวางที่นี่'}
-                  </div>
-                  <div className="text-[12.5px] text-gray-400 mb-4">
-                    รองรับหลายไฟล์พร้อมกัน (.xlsx / .xls)
-                  </div>
-                  {/* ปุ่ม browse แยกออกมาชัดเจน */}
-                  <button
-                    type="button"
-                    onClick={handleClickBrowse}
-                    className="px-6 py-2.5 text-[13px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm"
-                  >
-                    เลือกไฟล์จากเครื่อง
-                  </button>
-                </div>
-                <div className="text-[11.5px] text-gray-500 bg-white border border-gray-200 rounded-xl px-5 py-3.5 text-left max-w-[400px] w-full">
-                  <div className="font-bold text-gray-700 mb-2">วิธีดาวน์โหลดไฟล์จาก Seamless:</div>
-                  <ol className="space-y-1 list-decimal list-inside text-gray-400">
-                    <li>ไปที่ seamlessfordmis.nhso.go.th</li>
-                    <li>เมนู REP → รายงาน REP แบบ INDIVIDUAL</li>
-                    <li>เลือก Krungthai Digital Health Platform</li>
-                    <li>กด ออกรายงาน → ออกรายงาน (Excel)</li>
-                  </ol>
-                </div>
-              </>
-            )}
+        {importing ? (
+          <div className="border-2 border-blue-200 bg-blue-50 rounded-2xl p-14 flex flex-col items-center gap-5">
+            <div className="w-14 h-14 rounded-2xl bg-blue-100 flex items-center justify-center">
+              <span className="w-7 h-7 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin block" />
+            </div>
+            <div className="text-center">
+              <div className="text-[15px] font-bold text-gray-800 mb-1">กำลังดำเนินการ...</div>
+              <div className="text-[12.5px] text-blue-600 font-medium">{importProgress}</div>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={cn(
+              'border-2 border-dashed rounded-2xl transition-all p-14 flex flex-col items-center gap-5',
+              dragOver
+                ? 'border-blue-500 bg-blue-50/60 scale-[1.01]'
+                : 'border-gray-200 bg-gray-50/40 hover:border-blue-300',
+            )}
+          >
+            <div className={cn('w-16 h-16 rounded-2xl flex items-center justify-center text-3xl transition-all',
+              dragOver ? 'bg-blue-100 scale-110' : 'bg-gray-100')}>
+              {dragOver ? '📂' : '📊'}
+            </div>
+            <div className="text-center">
+              <div className="text-[15px] font-bold text-gray-800 mb-1">
+                {dragOver ? 'วางไฟล์ได้เลย' : 'ลากไฟล์มาวางที่นี่'}
+              </div>
+              <div className="text-[12.5px] text-gray-400 mb-4">รองรับหลายไฟล์พร้อมกัน (.xlsx / .xls)</div>
+              <button type="button" onClick={handleClickBrowse}
+                className="px-6 py-2.5 text-[13px] font-bold bg-blue-600 hover:bg-blue-700 text-white rounded-xl transition-all shadow-sm">
+                เลือกไฟล์จากเครื่อง
+              </button>
+            </div>
+            <div className="text-[11.5px] text-gray-500 bg-white border border-gray-200 rounded-xl px-5 py-3.5 text-left max-w-[400px] w-full">
+              <div className="font-bold text-gray-700 mb-2">วิธีดาวน์โหลดไฟล์จาก Seamless:</div>
+              <ol className="space-y-1 list-decimal list-inside text-gray-400">
+                <li>ไปที่ seamlessfordmis.nhso.go.th</li>
+                <li>เมนู REP → รายงาน REP แบบ INDIVIDUAL</li>
+                <li>เลือก Krungthai Digital Health Platform</li>
+                <li>กด ออกรายงาน → ออกรายงาน (Excel)</li>
+              </ol>
+            </div>
+          </div>
+        )}
       </div>
     )
   }
@@ -433,33 +446,21 @@ export function SeamlessPage() {
   // ── Main Dashboard ────────────────────────────────────────────
   return (
     <div className="max-w-[1440px] mx-auto px-8 py-7">
-      {/* hidden input */}
-      <input
-        ref={inputRef}
-        type="file"
-        accept=".xlsx,.xls"
-        multiple
-        className="hidden"
-        onChange={handleInputChange}
-      />
+      <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden"
+        onChange={handleInputChange} />
 
       {/* Toast */}
       {toast && (
         <div className={cn(
           'fixed bottom-7 right-7 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl border text-sm shadow-xl animate-fade-up',
-          toast.ok
-            ? 'bg-emerald-50 border-emerald-200 text-emerald-800'
-            : 'bg-red-50 border-red-200 text-red-800',
+          toast.ok ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-red-50 border-red-200 text-red-800',
         )}>
-          <span className={cn(
-            'w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',
-            toast.ok ? 'bg-emerald-500' : 'bg-red-500',
-          )}>{toast.ok ? '✓' : '✕'}</span>
+          <span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',
+            toast.ok ? 'bg-emerald-500' : 'bg-red-500')}>{toast.ok ? '✓' : '✕'}</span>
           {toast.msg}
         </div>
       )}
 
-      {/* Import progress overlay */}
       {importing && (
         <div className="fixed inset-0 bg-gray-900/30 backdrop-blur-sm z-[998] flex items-center justify-center">
           <div className="bg-white rounded-2xl shadow-2xl px-8 py-7 flex flex-col items-center gap-4 min-w-[320px]">
@@ -470,12 +471,9 @@ export function SeamlessPage() {
         </div>
       )}
 
-      {/* Confirm Clear */}
       {confirmClear && (
-        <div
-          className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
-          onClick={() => setConfirmClear(false)}
-        >
+        <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-6"
+          onClick={() => setConfirmClear(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[400px] p-7" onClick={e => e.stopPropagation()}>
             <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="w-6 h-6">
@@ -484,20 +482,14 @@ export function SeamlessPage() {
             </div>
             <div className="text-center mb-5">
               <div className="text-[16px] font-bold text-gray-900 mb-1">ยืนยันการล้างข้อมูล</div>
-              <div className="text-[13px] text-gray-500">
-                จะลบข้อมูลทั้งหมด <b className="text-gray-800">{fmtNum(rows.length)} รายการ</b> ออกจาก Supabase
-              </div>
+              <div className="text-[13px] text-gray-500">จะลบข้อมูลทั้งหมด <b>{fmtNum(rows.length)}</b> รายการ ออกจาก Supabase</div>
               <div className="text-[11px] text-red-500 mt-2">⚠ ไม่สามารถยกเลิกได้</div>
             </div>
             <div className="flex gap-2 justify-center">
-              <button
-                onClick={() => setConfirmClear(false)}
-                className="px-5 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-gray-300 transition-all"
-              >ยกเลิก</button>
-              <button
-                onClick={handleClearAll}
-                className="px-5 py-2 text-[12.5px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-all"
-              >ล้างข้อมูล</button>
+              <button onClick={() => setConfirmClear(false)}
+                className="px-5 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500">ยกเลิก</button>
+              <button onClick={handleClearAll}
+                className="px-5 py-2 text-[12.5px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg">ล้างข้อมูล</button>
             </div>
           </div>
         </div>
@@ -514,99 +506,73 @@ export function SeamlessPage() {
             ติดตามการจ่ายชดเชยไวรัสตับอักเสบ บี &amp; ซี
           </h1>
           <div className="text-[12px] text-gray-400 mt-0.5">
-            {fmtNum(rows.length)} รายการทั้งหมด · พบบริการตับอักเสบ {fmtNum(hepRows.length)} รายการ
-            {stats.sourceFiles.length > 0 && ` · ${stats.sourceFiles.length} ไฟล์ต้นทาง`}
+            {fmtNum(rows.length)} รายการ · ตับอักเสบ {fmtNum(hepRows.length)} รายการ
+            {stats.sourceFiles.length > 0 && ` · ${stats.sourceFiles.length} ไฟล์`}
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleClickBrowse}
-            disabled={importing}
-            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-blue-50 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-100 transition-all disabled:opacity-40"
-          >
+          <button type="button" onClick={handleClickBrowse} disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-blue-50 border border-blue-200 text-blue-600 rounded-xl hover:bg-blue-100 transition-all disabled:opacity-40">
             + เพิ่มไฟล์ .xlsx
           </button>
-          <button
-            type="button"
-            onClick={() => setConfirmClear(true)}
-            disabled={importing}
-            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-gray-50 border border-gray-200 text-gray-500 rounded-xl hover:border-red-200 hover:text-red-500 transition-all disabled:opacity-40"
-          >
+          <button type="button" onClick={() => setConfirmClear(true)} disabled={importing}
+            className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-gray-50 border border-gray-200 text-gray-500 rounded-xl hover:border-red-200 hover:text-red-500 transition-all disabled:opacity-40">
             🗑 ล้างทั้งหมด
           </button>
         </div>
       </div>
 
-      {/* Source file chips */}
       {stats.sourceFiles.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-5">
           {stats.sourceFiles.map((f, i) => (
             <div key={i} className="flex items-center gap-1.5 px-3 py-1 bg-white border border-gray-200 rounded-full text-[11px] text-gray-600">
-              <span className="text-blue-400">📄</span> {f}
+              <span className="text-blue-400">📄</span>{f}
             </div>
           ))}
         </div>
       )}
 
-      {/* KPI Cards */}
+      {/* KPI */}
       <div className="grid grid-cols-4 gap-4 mb-5">
-        <KpiCard icon="🔬" label="บริการตับอักเสบ บี"
-          val={fmtNum(stats.hepB)} sub={`${fmtNum(stats.uniqueB)} คน (ไม่ซ้ำ)`}
-          barColor="#2563eb" bar={stats.total ? stats.hepB / stats.total : 0} />
-        <KpiCard icon="🧬" label="บริการตับอักเสบ ซี"
-          val={fmtNum(stats.hepC)} sub={`${fmtNum(stats.uniqueC)} คน (ไม่ซ้ำ)`}
-          barColor="#0891b2" bar={stats.total ? stats.hepC / stats.total : 0} />
-        <KpiCard icon="✅" label="ได้รับการชดเชย"
-          val={`${fmtNum(stats.comp)} รายการ`}
-          sub={`${stats.total ? (stats.comp / stats.total * 100).toFixed(1) : 0}%`}
-          sub2={`฿${fmtBaht(stats.totalComp)}`}
-          barColor="#059669" bar={stats.total ? stats.comp / stats.total : 0} />
-        <KpiCard icon="❌" label="ไม่ได้รับการชดเชย"
-          val={`${fmtNum(stats.notComp)} รายการ`}
-          sub={`฿${fmtBaht(stats.totalNotComp)} ที่ขอเบิก`}
-          barColor="#dc2626" bar={stats.total ? stats.notComp / stats.total : 0} />
+        <KpiCard icon="🔬" label="บริการตับอักเสบ บี" val={fmtNum(stats.hepB)}
+          sub={`${fmtNum(stats.uniqueB)} คน`} barColor="#2563eb" bar={stats.total ? stats.hepB/stats.total : 0} />
+        <KpiCard icon="🧬" label="บริการตับอักเสบ ซี" val={fmtNum(stats.hepC)}
+          sub={`${fmtNum(stats.uniqueC)} คน`} barColor="#0891b2" bar={stats.total ? stats.hepC/stats.total : 0} />
+        <KpiCard icon="✅" label="ได้รับการชดเชย" val={`${fmtNum(stats.comp)} รายการ`}
+          sub={`${stats.total?(stats.comp/stats.total*100).toFixed(1):0}%`}
+          sub2={`฿${fmtBaht(stats.totalComp)}`} barColor="#059669" bar={stats.total ? stats.comp/stats.total : 0} />
+        <KpiCard icon="❌" label="ไม่ได้รับการชดเชย" val={`${fmtNum(stats.notComp)} รายการ`}
+          sub={`฿${fmtBaht(stats.totalNotComp)}`} barColor="#dc2626" bar={stats.total ? stats.notComp/stats.total : 0} />
       </div>
 
-      {/* Summary Cards */}
+      {/* Summary */}
       <div className="grid grid-cols-2 gap-4 mb-5">
-        <SummaryCard
-          title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี"
-          rows={hepRows.filter(r => isHepB(r.service_name))}
-          color="#2563eb" bgColor="#eff6ff"
-        />
-        <SummaryCard
-          title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี"
-          rows={hepRows.filter(r => isHepC(r.service_name))}
-          color="#0891b2" bgColor="#ecfeff"
-        />
+        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี"
+          rows={hepRows.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff" />
+        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี"
+          rows={hepRows.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff" />
       </div>
 
       {/* Table */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
-        {/* Toolbar */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
             <div className="w-2 h-2 rounded-full bg-indigo-500" />
-            <div className="font-bold text-gray-900 text-[13.5px]">รายการบริการตับอักเสบทั้งหมด</div>
+            <div className="font-bold text-gray-900 text-[13.5px]">รายการบริการตับอักเสบ</div>
           </div>
           <div className="flex flex-wrap gap-2">
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-              {[['all','ทั้งหมด'],['hepB','ตับอักเสบ บี'],['hepC','ตับอักเสบ ซี']].map(([v,l]) => (
-                <button key={v} type="button" onClick={() => { setFilterType(v); setPage(1) }}
+              {[['all','ทั้งหมด'],['hepB','ตับอักเสบ บี'],['hepC','ตับอักเสบ ซี']].map(([v,l])=>(
+                <button key={v} type="button" onClick={()=>{setFilterType(v);setPage(1)}}
                   className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',
-                    filterType === v ? 'bg-white font-bold text-blue-600 shadow-sm' : 'text-gray-500 hover:text-blue-500')}>
-                  {l}
-                </button>
+                    filterType===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>
               ))}
             </div>
             <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">
-              {[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย']].map(([v,l]) => (
-                <button key={v} type="button" onClick={() => { setFilterStatus(v); setPage(1) }}
+              {[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย']].map(([v,l])=>(
+                <button key={v} type="button" onClick={()=>{setFilterStatus(v);setPage(1)}}
                   className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',
-                    filterStatus === v ? 'bg-white font-bold text-blue-600 shadow-sm' : 'text-gray-500 hover:text-blue-500')}>
-                  {l}
-                </button>
+                    filterStatus===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>
               ))}
             </div>
             <div className="relative">
@@ -615,53 +581,44 @@ export function SeamlessPage() {
                 <circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/>
               </svg>
               <input className="pl-9 pr-3 py-2 text-[12.5px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-[200px]"
-                placeholder="ค้นหาชื่อ, PID, REP No..."
-                value={search} onChange={e => { setSearch(e.target.value); setPage(1) }} />
+                placeholder="ค้นหาชื่อ, PID, REP No..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}} />
             </div>
-            <button type="button" onClick={() => exportCsv(filtered)}
+            <button type="button" onClick={()=>exportCsv(filtered)}
               className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3">
                 <path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/>
-              </svg>
-              Export CSV
+              </svg>Export CSV
             </button>
           </div>
         </div>
 
-        {/* Stats bar */}
         <div className="flex flex-wrap gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-[12px]">
-          <StatChip dot="#6b7280" label="แสดง"      val={fmtNum(filtered.length)} unit="รายการ" />
+          <StatChip dot="#6b7280" label="แสดง" val={fmtNum(filtered.length)} unit="รายการ" />
           <div className="w-px bg-gray-200 self-stretch" />
-          <StatChip dot="#059669" label="ชดเชยรวม"
-            val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit="" />
+          <StatChip dot="#059669" label="ชดเชยรวม" val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit="" />
           <div className="w-px bg-gray-200 self-stretch" />
-          <StatChip dot="#dc2626" label="ไม่ชดเชย"
-            val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ" />
+          <StatChip dot="#dc2626" label="ไม่ชดเชย" val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ" />
           <div className="w-px bg-gray-200 self-stretch" />
-          <StatChip dot="#2563eb" label="ขอเบิกรวม"
-            val={`฿${fmtBaht(filtered.reduce((a,b)=>a+b.total_claim,0))}`} unit="" />
+          <StatChip dot="#2563eb" label="ขอเบิกรวม" val={`฿${fmtBaht(filtered.reduce((a,b)=>a+b.total_claim,0))}`} unit="" />
         </div>
 
-        {/* Table body */}
-        <div className="overflow-x-auto overflow-y-auto" style={{ maxHeight: '60vh' }}>
+        <div className="overflow-x-auto overflow-y-auto" style={{maxHeight:'60vh'}}>
           <table className="w-full border-collapse text-[12px]">
             <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
               <tr>
-                {['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','วันที่บริการ','วันที่ส่งข้อมูล','รายการบริการ','ขอเบิก (฿)','ชดเชย (฿)','สถานะ','หมายเหตุ'].map(h => (
+                {['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','วันที่บริการ','วันที่ส่ง','รายการบริการ','ขอเบิก (฿)','ชดเชย (฿)','สถานะ','หมายเหตุ'].map(h=>(
                   <th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {pageRows.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="text-center py-16 text-gray-400">
-                    <div className="text-3xl mb-3 opacity-40">🔍</div>
-                    <div className="text-[13px]">ไม่พบข้อมูลที่ตรงกับเงื่อนไข</div>
-                  </td>
-                </tr>
-              ) : pageRows.map((r, i) => (
-                <tr key={r.id ?? `${r.trans_id}-${r.item_seq}-${i}`}
+              {pageRows.length===0 ? (
+                <tr><td colSpan={12} className="text-center py-16 text-gray-400">
+                  <div className="text-3xl mb-3 opacity-40">🔍</div>
+                  <div className="text-[13px]">ไม่พบข้อมูลที่ตรงกับเงื่อนไข</div>
+                </td></tr>
+              ) : pageRows.map((r,i)=>(
+                <tr key={r.id??`${r.trans_id}-${r.item_seq}-${i}`}
                   className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
                   <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
                   <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.rep_no}</td>
@@ -669,10 +626,7 @@ export function SeamlessPage() {
                   <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
                   <td className="px-3 py-2.5">
                     <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',
-                      r.rights==='UCS' ? 'bg-blue-100 text-blue-700' :
-                      r.rights==='SSS' ? 'bg-orange-100 text-orange-700' :
-                      r.rights==='WEL' ? 'bg-purple-100 text-purple-700' :
-                      'bg-gray-100 text-gray-600')}>
+                      r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600')}>
                       {r.rights||'—'}
                     </span>
                   </td>
@@ -680,30 +634,24 @@ export function SeamlessPage() {
                   <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.send_date}</td>
                   <td className="px-3 py-2.5">
                     <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',
-                      isHepB(r.service_name) ? 'bg-blue-50 text-blue-700 border border-blue-200' :
-                      isHepC(r.service_name) ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' :
-                      'bg-gray-50 text-gray-600')}>
+                      isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':isHepC(r.service_name)?'bg-cyan-50 text-cyan-700 border border-cyan-200':'bg-gray-50 text-gray-600')}>
                       {isHepB(r.service_name)?'🟦':isHepC(r.service_name)?'🔵':''}
                       <span className="truncate max-w-[220px]">{r.service_name}</span>
                     </span>
                   </td>
-                  <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">
-                    {r.total_claim>0 ? fmtBaht(r.total_claim) : '—'}
-                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.total_claim>0?fmtBaht(r.total_claim):'—'}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold">
-                    <span className={r.compensated>0 ? 'text-emerald-600' : 'text-gray-300'}>
-                      {r.compensated>0 ? fmtBaht(r.compensated) : '—'}
-                    </span>
+                    <span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span>
                   </td>
                   <td className="px-3 py-2.5 text-center">
                     <span className={cn('px-2.5 py-1 rounded-full text-[10.5px] font-bold',
-                      r.status==='ชดเชย' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-600')}>
-                      {r.status==='ชดเชย' ? '✓ ชดเชย' : '✕ ไม่ชดเชย'}
+                      r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>
+                      {r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}
                     </span>
                   </td>
                   <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[200px]">
                     <span className="truncate block" title={r.note_other||r.note}>
-                      {r.note_other ? (r.note_other.split('##')[1]||r.note_other) : r.note||'—'}
+                      {r.note_other?(r.note_other.split('##')[1]||r.note_other):r.note||'—'}
                     </span>
                   </td>
                 </tr>
@@ -712,21 +660,15 @@ export function SeamlessPage() {
           </table>
         </div>
 
-        {/* Pager */}
-        {totalPages > 1 && (
+        {totalPages>1 && (
           <div className="flex items-center gap-1.5 px-6 py-4 border-t border-gray-100 flex-wrap">
             <button type="button" disabled={page===1} onClick={()=>setPage(p=>p-1)}
               className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400 hover:text-blue-600 transition-all">‹</button>
             {Array.from({length:Math.min(totalPages,10)},(_,i)=>{
-              const p = totalPages<=10 ? i+1 : Math.max(1,Math.min(page-4,totalPages-9))+i
-              return (
-                <button key={p} type="button" onClick={()=>setPage(p)}
-                  className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',
-                    p===page ? 'bg-blue-600 border-blue-600 text-white font-semibold'
-                             : 'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
-                  {p}
-                </button>
-              )
+              const p=totalPages<=10?i+1:Math.max(1,Math.min(page-4,totalPages-9))+i
+              return <button key={p} type="button" onClick={()=>setPage(p)}
+                className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',
+                  p===page?'bg-blue-600 border-blue-600 text-white font-semibold':'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>{p}</button>
             })}
             <button type="button" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)}
               className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400 hover:text-blue-600 transition-all">›</button>
@@ -739,42 +681,37 @@ export function SeamlessPage() {
 }
 
 // ── Sub components ────────────────────────────────────────────────
-function KpiCard({ icon, label, val, sub, sub2, bar, barColor }: {
-  icon:string; label:string; val:string; sub:string; sub2?:string; bar:number; barColor:string
-}) {
+function KpiCard({icon,label,val,sub,sub2,bar,barColor}:{icon:string;label:string;val:string;sub:string;sub2?:string;bar:number;barColor:string}) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm relative overflow-hidden">
-      <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{background:barColor}} />
+      <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{background:barColor}}/>
       <div className="text-2xl mb-3">{icon}</div>
       <div className="text-[10px] font-bold tracking-widest uppercase text-gray-400 mb-1">{label}</div>
       <div className="text-[22px] font-black text-gray-900 mb-0.5">{val}</div>
       <div className="text-[11px] text-gray-400">{sub}</div>
-      {sub2 && <div className="text-[12px] font-bold mt-1" style={{color:barColor}}>{sub2}</div>}
+      {sub2&&<div className="text-[12px] font-bold mt-1" style={{color:barColor}}>{sub2}</div>}
       <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700"
-          style={{width:`${Math.min(bar*100,100)}%`,background:barColor}} />
+        <div className="h-full rounded-full transition-all duration-700" style={{width:`${Math.min(bar*100,100)}%`,background:barColor}}/>
       </div>
     </div>
   )
 }
 
-function SummaryCard({ title, rows, color, bgColor }: {
-  title:string; rows:SeamlessRow[]; color:string; bgColor:string
-}) {
-  const comp    = rows.filter(r => r.status==='ชดเชย')
-  const notComp = rows.filter(r => r.status==='ไม่ชดเชย')
-  const pct     = rows.length ? (comp.length/rows.length*100) : 0
-  const reasons: Record<string,number> = {}
-  for (const r of notComp) {
-    const raw = r.note_other ? (r.note_other.split('##')[1]||r.note_other).trim() : r.note||'ไม่ระบุ'
-    const key = raw.length>55 ? raw.slice(0,55)+'…' : raw
-    reasons[key] = (reasons[key]||0)+1
+function SummaryCard({title,rows,color,bgColor}:{title:string;rows:SeamlessRow[];color:string;bgColor:string}) {
+  const comp=rows.filter(r=>r.status==='ชดเชย')
+  const notComp=rows.filter(r=>r.status==='ไม่ชดเชย')
+  const pct=rows.length?(comp.length/rows.length*100):0
+  const reasons:Record<string,number>={}
+  for(const r of notComp){
+    const raw=r.note_other?(r.note_other.split('##')[1]||r.note_other).trim():r.note||'ไม่ระบุ'
+    const key=raw.length>55?raw.slice(0,55)+'…':raw
+    reasons[key]=(reasons[key]||0)+1
   }
-  const topReasons = Object.entries(reasons).sort((a,b)=>b[1]-a[1]).slice(0,3)
+  const topReasons=Object.entries(reasons).sort((a,b)=>b[1]-a[1]).slice(0,3)
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-4">
-        <div className="w-2 h-2 rounded-full" style={{background:color}} />
+        <div className="w-2 h-2 rounded-full" style={{background:color}}/>
         <div className="font-bold text-gray-900 text-[13px]">{title}</div>
       </div>
       <div className="grid grid-cols-3 gap-3 mb-4">
@@ -797,16 +734,14 @@ function SummaryCard({ title, rows, color, bgColor }: {
           <span className="font-bold" style={{color}}>{pct.toFixed(1)}%</span>
         </div>
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full rounded-full" style={{width:`${pct}%`,background:color}} />
+          <div className="h-full rounded-full" style={{width:`${pct}%`,background:color}}/>
         </div>
       </div>
-      <div className="text-[12px] font-bold text-emerald-700 mb-3">
-        ยอดชดเชยรวม: ฿{fmtBaht(comp.reduce((a,b)=>a+b.compensated,0))}
-      </div>
-      {topReasons.length>0 && (
+      <div className="text-[12px] font-bold text-emerald-700 mb-3">ยอดชดเชยรวม: ฿{fmtBaht(comp.reduce((a,b)=>a+b.compensated,0))}</div>
+      {topReasons.length>0&&(
         <div>
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">สาเหตุไม่ชดเชยที่พบบ่อย</div>
-          {topReasons.map(([reason,count],i) => (
+          {topReasons.map(([reason,count],i)=>(
             <div key={i} className="flex items-start gap-2 mb-1.5">
               <span className="text-[10px] font-bold text-red-400 mt-0.5 flex-shrink-0">✕</span>
               <span className="text-[11px] text-gray-600 leading-tight flex-1">{reason}</span>
@@ -819,29 +754,23 @@ function SummaryCard({ title, rows, color, bgColor }: {
   )
 }
 
-function StatChip({ dot, label, val, unit }: { dot:string; label:string; val:string; unit:string }) {
+function StatChip({dot,label,val,unit}:{dot:string;label:string;val:string;unit:string}) {
   return (
     <div className="flex items-center gap-2">
-      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:dot}} />
+      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background:dot}}/>
       <span className="text-gray-500">{label}</span>
       <span className="font-bold text-gray-800">{val}</span>
-      {unit && <span className="text-gray-400">{unit}</span>}
+      {unit&&<span className="text-gray-400">{unit}</span>}
     </div>
   )
 }
 
-function exportCsv(rows: SeamlessRow[]) {
-  const headers = ['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','วันที่ส่ง','วันที่บริการ','รายการบริการ','จำนวน','ราคา','ขอเบิกรวม','ชดเชย','ไม่ชดเชย','สถานะ','หมายเหตุ','ไฟล์ต้นทาง']
-  const csvRows = rows.map((r,i) => [
-    i+1,r.rep_no,r.trans_id,r.hn,r.pid,r.name,r.rights,r.hmain,
-    r.send_date,r.service_date,r.service_name,r.qty,r.price,
-    r.total_claim,r.compensated,r.not_comp,r.status,
-    (r.note_other?(r.note_other.split('##')[1]||r.note_other):r.note)||'',
-    r.source_file,
-  ].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))
-  const blob = new Blob(['\uFEFF'+[headers.join(','),...csvRows].join('\n')],{type:'text/csv;charset=utf-8;'})
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href=url; a.download=`seamless_hep_${new Date().toISOString().split('T')[0]}.csv`
-  a.click(); URL.revokeObjectURL(url)
+function exportCsv(rows:SeamlessRow[]) {
+  const headers=['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','วันที่ส่ง','วันที่บริการ','รายการบริการ','จำนวน','ราคา','ขอเบิกรวม','ชดเชย','ไม่ชดเชย','สถานะ','หมายเหตุ','ไฟล์ต้นทาง']
+  const csvRows=rows.map((r,i)=>[i+1,r.rep_no,r.trans_id,r.hn,r.pid,r.name,r.rights,r.hmain,r.send_date,r.service_date,r.service_name,r.qty,r.price,r.total_claim,r.compensated,r.not_comp,r.status,(r.note_other?(r.note_other.split('##')[1]||r.note_other):r.note)||'',r.source_file].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))
+  const blob=new Blob(['\uFEFF'+[headers.join(','),...csvRows].join('\n')],{type:'text/csv;charset=utf-8;'})
+  const url=URL.createObjectURL(blob)
+  const a=document.createElement('a')
+  a.href=url;a.download=`seamless_hep_${new Date().toISOString().split('T')[0]}.csv`
+  a.click();URL.revokeObjectURL(url)
 }
