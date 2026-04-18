@@ -3,11 +3,10 @@ import { createServerClient } from '@/lib/supabase'
 
 const PAGE_SIZE = 1000
 
-// GET /api/seamless — ดึงข้อมูลทั้งหมด (paginated)
+// GET /api/seamless
 export async function GET() {
   try {
     const sb = createServerClient()
-
     const { count } = await sb
       .from('seamless_records')
       .select('*', { count: 'exact', head: true })
@@ -36,7 +35,7 @@ export async function GET() {
   }
 }
 
-// POST /api/seamless — import rows (upsert by trans_id + item_seq)
+// POST /api/seamless — upsert (อัปเดตถ้า trans_id+item_seq ซ้ำ)
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json() as { rows: unknown[] }
@@ -46,28 +45,28 @@ export async function POST(req: NextRequest) {
 
     const sb = createServerClient()
     const BATCH = 500
-    let imported = 0
+    let upserted = 0
 
     for (let i = 0; i < body.rows.length; i += BATCH) {
       const chunk = body.rows.slice(i, i + BATCH)
       const { error, count } = await sb
         .from('seamless_records')
         .upsert(chunk, {
-          onConflict: 'trans_id,item_seq',
-          ignoreDuplicates: true,
+          onConflict: 'trans_id,item_seq',  // อัปเดตถ้าซ้ำ (upsert จริง)
+          ignoreDuplicates: false,           // false = แทนที่ด้วยค่าใหม่
           count: 'exact',
         })
       if (error) throw new Error(error.message)
-      imported += count ?? chunk.length
+      upserted += count ?? chunk.length
     }
 
-    return NextResponse.json({ ok: true, imported })
+    return NextResponse.json({ ok: true, imported: upserted })
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }
 }
 
-// DELETE /api/seamless — ลบข้อมูลทั้งหมด (reset)
+// DELETE /api/seamless — ล้างทั้งหมด
 export async function DELETE() {
   try {
     const sb = createServerClient()

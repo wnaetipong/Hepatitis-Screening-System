@@ -162,6 +162,7 @@ export function SeamlessPage() {
   const [search, setSearch]         = useState('')
   const [filterStatus, setFStatus]  = useState('all')
   const [filterType, setFType]      = useState('all')
+  const [filterHsend, setFHsend]    = useState<string[]>([])  // multi-select HSEND
   const [page, setPage]             = useState(1)
   const [toast, setToast]           = useState<{msg:string;ok:boolean}|null>(null)
   const [confirmClear, setConfirm]  = useState(false)
@@ -244,13 +245,15 @@ export function SeamlessPage() {
     let r = filterType === 'hepB' ? hepRows.filter(x => isHepB(x.service_name))
           : filterType === 'hepC' ? hepRows.filter(x => isHepC(x.service_name)) : hepRows
     if (filterStatus !== 'all') r = r.filter(x => x.status === filterStatus)
+    // กรองตาม HSEND (multi-select)
+    if (filterHsend.length > 0) r = r.filter(x => filterHsend.includes(x.hsend))
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       r = r.filter(x => x.name.toLowerCase().includes(q) || x.pid.includes(q) ||
         x.rep_no.toLowerCase().includes(q) || x.service_date.includes(q))
     }
     return r
-  }, [hepRows, filterType, filterStatus, search])
+  }, [hepRows, filterType, filterStatus, filterHsend, search])
 
   const stats = useMemo(() => {
     const hepB = hepRows.filter(r => isHepB(r.service_name))
@@ -265,6 +268,7 @@ export function SeamlessPage() {
       uniqueB: new Set(hepB.map(r => r.pid)).size,
       uniqueC: new Set(hepC.map(r => r.pid)).size,
       sourceFiles: [...new Set(rows.map(r => r.source_file))],
+      hsendOptions: [...new Set(hepRows.map(r => r.hsend).filter(Boolean))].sort(),
     }
   }, [hepRows, rows])
 
@@ -433,6 +437,41 @@ export function SeamlessPage() {
                   className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterStatus===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>
               ))}
             </div>
+            {/* HSEND multi-select */}
+            <div className="relative">
+              <select
+                className="pl-3 pr-8 py-2 text-[12px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 appearance-none cursor-pointer"
+                value=""
+                onChange={e => {
+                  const val = e.target.value
+                  if (!val) return
+                  setFHsend(prev => prev.includes(val) ? prev.filter(v => v !== val) : [...prev, val])
+                  setPage(1)
+                }}
+              >
+                <option value="">หน่วยบริการ (HSEND){filterHsend.length > 0 ? ` ✓${filterHsend.length}` : ''}</option>
+                {stats.hsendOptions.map(h => (
+                  <option key={h} value={h} style={{fontWeight: filterHsend.includes(h) ? 'bold' : 'normal'}}>
+                    {filterHsend.includes(h) ? '✓ ' : ''}{h}
+                  </option>
+                ))}
+              </select>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none"><path d="M4 6l4 4 4-4"/></svg>
+            </div>
+            {/* HSEND selected chips */}
+            {filterHsend.length > 0 && (
+              <div className="flex items-center gap-1 flex-wrap">
+                {filterHsend.map(h => (
+                  <span key={h} className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-700 rounded-lg text-[11px] font-semibold">
+                    {h}
+                    <button type="button" onClick={() => { setFHsend(prev => prev.filter(v => v !== h)); setPage(1) }}
+                      className="w-3.5 h-3.5 rounded-full bg-blue-200 hover:bg-blue-300 flex items-center justify-center text-[9px] transition-all">✕</button>
+                  </span>
+                ))}
+                <button type="button" onClick={() => { setFHsend([]); setPage(1) }}
+                  className="text-[11px] text-gray-400 hover:text-red-500 transition-all px-1">ล้าง</button>
+              </div>
+            )}
             <div className="relative">
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"><circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/></svg>
               <input className="pl-9 pr-3 py-2 text-[12.5px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 w-[200px]"
