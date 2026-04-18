@@ -14,44 +14,40 @@ interface SeamlessRow {
   note_other: string; hsend: string; source_file: string; imported_at?: string
 }
 
-// ── Load SheetJS จาก CDN เท่านั้น (ไม่ใช้ bundled version) ────────
-// bundled xlsx 0.18.5 มีปัญหากับ merged cells ใน browser
-// CDN version (0.20.x) fix bug นี้แล้ว
+// ── SheetJS CDN ───────────────────────────────────────────────────
 declare global {
   interface Window {
     XLSX: {
       read: (data: string, opts: { type: string; cellDates?: boolean }) => {
         SheetNames: string[]
-        Sheets: Record<string, unknown>
+        Sheets: Record<string, { '!ref'?: string; [key: string]: unknown }>
       }
       utils: {
         sheet_to_json: <T>(ws: unknown, opts: { header: number; defval: string; raw: boolean }) => T[]
+        decode_range: (ref: string) => { s: { r: number; c: number }; e: { r: number; c: number } }
+        encode_range: (range: { s: { r: number; c: number }; e: { r: number; c: number } }) => string
       }
     }
   }
 }
 
-let xlsxLoaded = false
-async function loadSheetJS(): Promise<typeof window.XLSX> {
-  if (xlsxLoaded && window.XLSX) return window.XLSX
-  return new Promise((resolve, reject) => {
-    // ลบ script เก่าถ้ามี
-    const existing = document.getElementById('sheetjs-cdn')
-    if (existing) existing.remove()
-    const script = document.createElement('script')
-    script.id = 'sheetjs-cdn'
-    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
-    script.onload = () => {
-      xlsxLoaded = true
-      console.log('[Seamless] SheetJS loaded from CDN, version:', (window.XLSX as unknown as { version?: string }).version)
-      resolve(window.XLSX)
-    }
-    script.onerror = () => reject(new Error('ไม่สามารถโหลด SheetJS จาก CDN ได้'))
-    document.head.appendChild(script)
+let xlsxReady = false
+async function loadSheetJS() {
+  if (xlsxReady && window.XLSX) return window.XLSX
+  return new Promise<typeof window.XLSX>((resolve, reject) => {
+    const s = document.createElement('script')
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js'
+    s.onload = () => { xlsxReady = true; resolve(window.XLSX) }
+    s.onerror = () => reject(new Error('โหลด SheetJS ไม่สำเร็จ'))
+    document.head.appendChild(s)
   })
 }
 
-// ── Read file as binary string (รองรับ merged cells ดีกว่า base64) ──
+// ── Parser ────────────────────────────────────────────────────────
+// ปัญหา: ไฟล์ Seamless มี <dimension ref="A2:AB10"> ผิดพลาด
+// แต่มีข้อมูลจริง 15,592 แถว
+// แก้ด้วยการ override ws['!ref'] ให้ครอบคลุมทั้งหมด
+
 function readFileAsBinaryString(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -61,26 +57,46 @@ function readFileAsBinaryString(file: File): Promise<string> {
   })
 }
 
-// ── Parser ────────────────────────────────────────────────────────
 async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; error?: string }> {
-  console.log('[Seamless] start parse:', file.name, file.size, 'bytes')
+  console.log('[Seamless] parsing:', file.name)
   try {
     const XLSX = await loadSheetJS()
     const bstr = await readFileAsBinaryString(file)
-    console.log('[Seamless] binary string length:', bstr.length)
 
     const wb = XLSX.read(bstr, { type: 'binary', cellDates: false })
     console.log('[Seamless] sheets:', wb.SheetNames)
 
-    if (!wb.SheetNames.length) return { rows: [], error: 'ไม่พบ sheet ในไฟล์' }
+    if (!wb.SheetNames.length) return { rows: [], error: 'ไม่พบ sheet' }
 
     const ws = wb.Sheets[wb.SheetNames[0]]
+
+    // ── KEY FIX: override !ref ให้ครอบคลุมทุก cell จริง ──────────
+    // ไฟล์ Seamless มี dimension ref ผิด (บอกแค่ 10 แถว แต่มีจริง 15,000+)
+    // ต้องหา last row จาก cell keys จริงๆ แทน
+    const cellKeys = Object.keys(ws).filter(k => !k.startsWith('!'))
+    if (cellKeys.length > 0) {
+      let maxRow = 0, maxCol = 0
+      for (const key of cellKeys) {
+        const match = key.match(/^([A-Z]+)(\d+)$/)
+        if (match) {
+          const row = parseInt(match[2])
+          const col = match[1].split('').reduce((acc, c) => acc * 26 + c.charCodeAt(0) - 64, 0)
+          if (row > maxRow) maxRow = row
+          if (col > maxCol) maxCol = col
+        }
+      }
+      const newRef = `A1:${String.fromCharCode(64 + Math.min(maxCol, 26))}${maxRow}`
+      console.log('[Seamless] original ref:', ws['!ref'], '→ override to:', newRef)
+      ws['!ref'] = newRef
+    }
+    // ─────────────────────────────────────────────────────────────
+
     const raw = XLSX.utils.sheet_to_json<(string | number | null)[]>(ws, {
       header: 1, defval: '', raw: true,
     }) as (string | number | null)[][]
 
-    console.log('[Seamless] raw rows:', raw.length)
-    if (raw[10]) console.log('[Seamless] row 10:', raw[10].slice(0, 8))
+    console.log('[Seamless] raw rows after fix:', raw.length)
+    if (raw[10]) console.log('[Seamless] row 10:', raw[10].slice(0, 6).map(String))
 
     if (!raw.length) return { rows: [], error: 'ไฟล์ว่าง' }
 
@@ -92,6 +108,7 @@ async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; err
       const v = parseFloat(String(row[i] ?? '')); return isNaN(v) ? 0 : v
     }
 
+    // หา dataStart (แถวที่มี header "ลำดับที่" + "REP No.")
     let dataStart = 10
     for (let i = 0; i < Math.min(20, raw.length); i++) {
       const joined = raw[i].map(v => String(v ?? '')).join('|')
@@ -124,7 +141,7 @@ async function parseSeamlessXlsx(file: File): Promise<{ rows: SeamlessRow[]; err
     if (rows[0]) console.log('[Seamless] sample:', rows[0].name, '|', rows[0].service_name, '|', rows[0].status)
     return { rows }
   } catch (e) {
-    console.error('[Seamless] parse error:', e)
+    console.error('[Seamless] error:', e)
     return { rows: [], error: String(e) }
   }
 }
@@ -187,7 +204,10 @@ export function SeamlessPage() {
         } else showToast(`บันทึกไม่สำเร็จ: ${j.error}`, false)
       } catch (e) { showToast(String(e), false) }
     }
-    showToast(totalNew > 0 ? `✓ เพิ่มใหม่ ${fmtNum(totalNew)} · ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ` : `ไม่มีข้อมูลใหม่`, totalNew > 0)
+    showToast(
+      totalNew > 0 ? `✓ เพิ่มใหม่ ${fmtNum(totalNew)} · ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ` : `ไม่มีข้อมูลใหม่ (ซ้ำ ${fmtNum(totalSkip)})`,
+      totalNew > 0,
+    )
     setPage(1); setIP(''); setImporting(false)
   }, [showToast])
 
@@ -209,7 +229,8 @@ export function SeamlessPage() {
     setIP(''); setImporting(false)
   }, [showToast])
 
-  const hepRows = useMemo(() => rows.filter(r => isHepB(r.service_name) || isHepC(r.service_name)), [rows])
+  const hepRows = useMemo(() =>
+    rows.filter(r => isHepB(r.service_name) || isHepC(r.service_name)), [rows])
 
   const filtered = useMemo(() => {
     let r = filterType === 'hepB' ? hepRows.filter(x => isHepB(x.service_name))
@@ -217,7 +238,8 @@ export function SeamlessPage() {
     if (filterStatus !== 'all') r = r.filter(x => x.status === filterStatus)
     if (search.trim()) {
       const q = search.trim().toLowerCase()
-      r = r.filter(x => x.name.toLowerCase().includes(q) || x.pid.includes(q) || x.rep_no.toLowerCase().includes(q) || x.service_date.includes(q))
+      r = r.filter(x => x.name.toLowerCase().includes(q) || x.pid.includes(q) ||
+        x.rep_no.toLowerCase().includes(q) || x.service_date.includes(q))
     }
     return r
   }, [hepRows, filterType, filterStatus, search])
@@ -241,7 +263,6 @@ export function SeamlessPage() {
   const totalPages = Math.ceil(filtered.length / PG)
   const pageRows   = filtered.slice((page-1)*PG, page*PG)
 
-  // Loading
   if (dbLoading) return (
     <div className="flex flex-col items-center justify-center py-32 gap-4">
       <div className="w-10 h-10 border-[3px] border-gray-200 border-t-blue-600 rounded-full animate-spin"/>
@@ -249,7 +270,6 @@ export function SeamlessPage() {
     </div>
   )
 
-  // Empty state
   if (rows.length === 0) return (
     <div className="max-w-[820px] mx-auto px-8 py-12">
       <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden" onChange={handleInput}/>
@@ -300,7 +320,6 @@ export function SeamlessPage() {
     </div>
   )
 
-  // Main dashboard
   return (
     <div className="max-w-[1440px] mx-auto px-8 py-7">
       <input ref={inputRef} type="file" accept=".xlsx,.xls" multiple className="hidden" onChange={handleInput}/>
@@ -343,7 +362,6 @@ export function SeamlessPage() {
         </div>
       )}
 
-      {/* Header */}
       <div className="flex items-center justify-between mb-5 flex-wrap gap-3">
         <div>
           <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-200 px-3 py-1 rounded-full mb-2">
@@ -376,7 +394,6 @@ export function SeamlessPage() {
         </div>
       )}
 
-      {/* KPI */}
       <div className="grid grid-cols-4 gap-4 mb-5">
         <KpiCard icon="🔬" label="บริการตับอักเสบ บี" val={fmtNum(stats.hepB)} sub={`${fmtNum(stats.uniqueB)} คน`} barColor="#2563eb" bar={stats.total?stats.hepB/stats.total:0}/>
         <KpiCard icon="🧬" label="บริการตับอักเสบ ซี" val={fmtNum(stats.hepC)} sub={`${fmtNum(stats.uniqueC)} คน`} barColor="#0891b2" bar={stats.total?stats.hepC/stats.total:0}/>
@@ -384,13 +401,11 @@ export function SeamlessPage() {
         <KpiCard icon="❌" label="ไม่ได้รับการชดเชย" val={`${fmtNum(stats.notComp)} รายการ`} sub={`฿${fmtBaht(stats.totalNotComp)}`} barColor="#dc2626" bar={stats.total?stats.notComp/stats.total:0}/>
       </div>
 
-      {/* Summary */}
       <div className="grid grid-cols-2 gap-4 mb-5">
         <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี" rows={hepRows.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff"/>
         <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี" rows={hepRows.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
       </div>
 
-      {/* Table */}
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-wrap gap-3">
           <div className="flex items-center gap-2.5">
@@ -447,28 +462,14 @@ export function SeamlessPage() {
                   <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.rep_no}</td>
                   <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
                   <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600')}>
-                      {r.rights||'—'}
-                    </span>
-                  </td>
+                  <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':'bg-gray-100 text-gray-600')}>{r.rights||'—'}</span></td>
                   <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.service_date}</td>
                   <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.send_date}</td>
-                  <td className="px-3 py-2.5">
-                    <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':isHepC(r.service_name)?'bg-cyan-50 text-cyan-700 border border-cyan-200':'bg-gray-50 text-gray-600')}>
-                      {isHepB(r.service_name)?'🟦':isHepC(r.service_name)?'🔵':''}<span className="truncate max-w-[220px]">{r.service_name}</span>
-                    </span>
-                  </td>
+                  <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':isHepC(r.service_name)?'bg-cyan-50 text-cyan-700 border border-cyan-200':'bg-gray-50 text-gray-600')}>{isHepB(r.service_name)?'🟦':isHepC(r.service_name)?'🔵':''}<span className="truncate max-w-[220px]">{r.service_name}</span></span></td>
                   <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.total_claim>0?fmtBaht(r.total_claim):'—'}</td>
                   <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold"><span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span></td>
-                  <td className="px-3 py-2.5 text-center">
-                    <span className={cn('px-2.5 py-1 rounded-full text-[10.5px] font-bold',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>
-                      {r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}
-                    </span>
-                  </td>
-                  <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[200px]">
-                    <span className="truncate block" title={r.note_other||r.note}>{r.note_other?(r.note_other.split('##')[1]||r.note_other):r.note||'—'}</span>
-                  </td>
+                  <td className="px-3 py-2.5 text-center"><span className={cn('px-2.5 py-1 rounded-full text-[10.5px] font-bold',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
+                  <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[200px]"><span className="truncate block" title={r.note_other||r.note}>{r.note_other?(r.note_other.split('##')[1]||r.note_other):r.note||'—'}</span></td>
                 </tr>
               ))}
             </tbody>
@@ -478,10 +479,7 @@ export function SeamlessPage() {
         {totalPages>1&&(
           <div className="flex items-center gap-1.5 px-6 py-4 border-t border-gray-100 flex-wrap">
             <button type="button" disabled={page===1} onClick={()=>setPage(p=>p-1)} className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400 hover:text-blue-600 transition-all">‹</button>
-            {Array.from({length:Math.min(totalPages,10)},(_,i)=>{
-              const p=totalPages<=10?i+1:Math.max(1,Math.min(page-4,totalPages-9))+i
-              return <button key={p} type="button" onClick={()=>setPage(p)} className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',p===page?'bg-blue-600 border-blue-600 text-white font-semibold':'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>{p}</button>
-            })}
+            {Array.from({length:Math.min(totalPages,10)},(_,i)=>{const p=totalPages<=10?i+1:Math.max(1,Math.min(page-4,totalPages-9))+i;return <button key={p} type="button" onClick={()=>setPage(p)} className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',p===page?'bg-blue-600 border-blue-600 text-white font-semibold':'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>{p}</button>})}
             <button type="button" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)} className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400 hover:text-blue-600 transition-all">›</button>
             <span className="text-[12px] text-gray-400 ml-2">หน้า {page}/{totalPages} · {fmtNum(filtered.length)} รายการ</span>
           </div>
@@ -500,9 +498,7 @@ function KpiCard({icon,label,val,sub,sub2,bar,barColor}:{icon:string;label:strin
       <div className="text-[22px] font-black text-gray-900 mb-0.5">{val}</div>
       <div className="text-[11px] text-gray-400">{sub}</div>
       {sub2&&<div className="text-[12px] font-bold mt-1" style={{color:barColor}}>{sub2}</div>}
-      <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-        <div className="h-full rounded-full transition-all duration-700" style={{width:`${Math.min(bar*100,100)}%`,background:barColor}}/>
-      </div>
+      <div className="mt-3 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full transition-all duration-700" style={{width:`${Math.min(bar*100,100)}%`,background:barColor}}/></div>
     </div>
   )
 }
@@ -526,13 +522,8 @@ function SummaryCard({title,rows,color,bgColor}:{title:string;rows:SeamlessRow[]
         <div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width:`${pct}%`,background:color}}/></div>
       </div>
       <div className="text-[12px] font-bold text-emerald-700 mb-3">ยอดชดเชยรวม: ฿{fmtBaht(comp.reduce((a,b)=>a+b.compensated,0))}</div>
-      {top.length>0&&(<div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">สาเหตุไม่ชดเชยที่พบบ่อย</div>
-        {top.map(([r,c],i)=>(<div key={i} className="flex items-start gap-2 mb-1.5">
-          <span className="text-[10px] font-bold text-red-400 mt-0.5 flex-shrink-0">✕</span>
-          <span className="text-[11px] text-gray-600 leading-tight flex-1">{r}</span>
-          <span className="text-[10px] font-bold text-gray-400 flex-shrink-0">{c} ครั้ง</span>
-        </div>))}
+      {top.length>0&&(<div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">สาเหตุไม่ชดเชยที่พบบ่อย</div>
+        {top.map(([r,c],i)=>(<div key={i} className="flex items-start gap-2 mb-1.5"><span className="text-[10px] font-bold text-red-400 mt-0.5 flex-shrink-0">✕</span><span className="text-[11px] text-gray-600 leading-tight flex-1">{r}</span><span className="text-[10px] font-bold text-gray-400 flex-shrink-0">{c} ครั้ง</span></div>))}
       </div>)}
     </div>
   )
