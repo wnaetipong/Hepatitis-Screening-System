@@ -5,22 +5,21 @@ import type { VillageRow, ScreeningRow, ScreeningType } from '@/types'
 export async function getAllVillages(): Promise<Record<string, VillageRow[]>> {
   const sb = createServerClient()
   const PAGE = 1000
+
+  const { count } = await sb.from('villages').select('*', { count: 'exact', head: true })
+  if (!count) return {}
+
+  const pages = Math.ceil(count / PAGE)
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, i) =>
+      sb.from('villages').select('*').order('moo').order('no').range(i * PAGE, (i + 1) * PAGE - 1)
+    )
+  )
+
   const all: VillageRow[] = []
-  let from = 0
-
-  for (;;) {
-    const { data, error } = await sb
-      .from('villages')
-      .select('*')
-      .order('moo')
-      .order('no')
-      .range(from, from + PAGE - 1)
-
+  for (const { data, error } of results) {
     if (error) throw new Error(error.message)
-    if (!data?.length) break
-    all.push(...(data as VillageRow[]))
-    if (data.length < PAGE) break
-    from += PAGE
+    if (data) all.push(...(data as VillageRow[]))
   }
 
   const result: Record<string, VillageRow[]> = {}
@@ -72,22 +71,24 @@ export async function deleteVillageById(id: number): Promise<void> {
 export async function getAllScreenings(): Promise<ScreeningRow[]> {
   const sb = createServerClient()
   const PAGE = 1000
+
+  const { count } = await sb.from('screenings').select('*', { count: 'exact', head: true })
+  if (!count) return []
+
+  const pages = Math.ceil(count / PAGE)
+  const results = await Promise.all(
+    Array.from({ length: pages }, (_, i) =>
+      sb.from('screenings')
+        .select('pid, type, year, date, unit, imported_at')
+        .range(i * PAGE, (i + 1) * PAGE - 1)
+    )
+  )
+
   const all: ScreeningRow[] = []
-  let from = 0
-
-  for (;;) {
-    const { data, error } = await sb
-      .from('screenings')
-      .select('pid, type, year, date, unit, imported_at')
-      .range(from, from + PAGE - 1)
-
+  for (const { data, error } of results) {
     if (error) throw new Error(error.message)
-    if (!data?.length) break
-    all.push(...(data as ScreeningRow[]))
-    if (data.length < PAGE) break
-    from += PAGE
+    if (data) all.push(...(data as ScreeningRow[]))
   }
-
   return all
 }
 
