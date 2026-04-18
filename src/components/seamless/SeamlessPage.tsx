@@ -252,27 +252,33 @@ export function SeamlessPage() {
   const hepRows = useMemo(() =>
     rows.filter(r => isHepB(r.service_name) || isHepC(r.service_name)), [rows])
 
+  // hepRows ที่กรอง HSEND แล้ว — ใช้กับ KPI, Summary, ตาราง
+  const hepRowsFiltered = useMemo(() =>
+    filterHsend.length > 0
+      ? hepRows.filter(r => filterHsend.includes(r.hsend || r.hmain || ''))
+      : hepRows,
+  [hepRows, filterHsend])
+
   const filtered = useMemo(() => {
-    let r = filterType === 'hepB' ? hepRows.filter(x => isHepB(x.service_name))
-          : filterType === 'hepC' ? hepRows.filter(x => isHepC(x.service_name)) : hepRows
+    let r = filterType === 'hepB' ? hepRowsFiltered.filter(x => isHepB(x.service_name))
+          : filterType === 'hepC' ? hepRowsFiltered.filter(x => isHepC(x.service_name)) : hepRowsFiltered
     if (filterStatus !== 'all') r = r.filter(x => x.status === filterStatus)
-    // กรองตาม HSEND (multi-select)
-    if (filterHsend.length > 0) r = r.filter(x => filterHsend.includes(x.hsend || x.hmain || ''))
+    // HSEND ถูกกรองใน hepRowsFiltered แล้ว ไม่ต้องกรองซ้ำ
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       r = r.filter(x => x.name.toLowerCase().includes(q) || x.pid.includes(q) ||
         x.rep_no.toLowerCase().includes(q) || x.service_date.includes(q))
     }
     return r
-  }, [hepRows, filterType, filterStatus, filterHsend, search])
+  }, [hepRowsFiltered, filterType, filterStatus, search])
 
   const stats = useMemo(() => {
-    const hepB = hepRows.filter(r => isHepB(r.service_name))
-    const hepC = hepRows.filter(r => isHepC(r.service_name))
-    const comp = hepRows.filter(r => r.status === 'ชดเชย')
-    const notComp = hepRows.filter(r => r.status === 'ไม่ชดเชย')
+    const hepB = hepRowsFiltered.filter(r => isHepB(r.service_name))
+    const hepC = hepRowsFiltered.filter(r => isHepC(r.service_name))
+    const comp = hepRowsFiltered.filter(r => r.status === 'ชดเชย')
+    const notComp = hepRowsFiltered.filter(r => r.status === 'ไม่ชดเชย')
     return {
-      total: hepRows.length, hepB: hepB.length, hepC: hepC.length,
+      total: hepRowsFiltered.length, hepB: hepB.length, hepC: hepC.length,
       comp: comp.length, notComp: notComp.length,
       totalComp: comp.reduce((a,b) => a+b.compensated, 0),
       totalNotComp: notComp.reduce((a,b) => a+b.total_claim, 0),
@@ -281,7 +287,7 @@ export function SeamlessPage() {
       sourceFiles: [...new Set(rows.map(r => r.source_file))],
       hsendOptions: [...new Set(rows.map(r => (r.hsend || r.hmain || '')).filter(Boolean))].sort(),
     }
-  }, [hepRows, rows])
+  }, [hepRowsFiltered, rows])
 
   const totalPages = Math.ceil(filtered.length / PG)
   const pageRows   = filtered.slice((page-1)*PG, page*PG)
@@ -425,8 +431,8 @@ export function SeamlessPage() {
       </div>
 
       <div className="grid grid-cols-2 gap-4 mb-5">
-        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี" rows={hepRows.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff"/>
-        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี" rows={hepRows.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
+        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff"/>
+        <SummaryCard title="สรุปบริการตรวจคัดกรองไวรัสตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
       </div>
 
       <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
