@@ -189,20 +189,28 @@ export function SeamlessPage() {
       const { rows: parsed, error } = await parseSeamlessXlsx(f)
       if (error) { showToast(`อ่านไฟล์ไม่สำเร็จ: ${error}`, false); continue }
       if (!parsed.length) { showToast(`ไม่พบข้อมูลในไฟล์ ${f.name}`, false); continue }
-      setIP(`กำลังบันทึก ${fmtNum(parsed.length)} รายการ → Supabase...`)
-      try {
-        const j = await fetch('/api/seamless', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rows: parsed }),
-        }).then(r => r.json())
-        if (j.ok) {
-          totalNew += j.imported ?? 0; totalSkip += parsed.length - (j.imported ?? 0)
-          setRows(prev => {
-            const ex = new Set(prev.map(r => `${r.trans_id}|${r.item_seq}`))
-            return [...prev, ...parsed.filter(r => !ex.has(`${r.trans_id}|${r.item_seq}`))]
-          })
-        } else showToast(`บันทึกไม่สำเร็จ: ${j.error}`, false)
-      } catch (e) { showToast(String(e), false) }
+      // แบ่ง batch ละ 500 แถว เพื่อหลีกเลี่ยง Vercel 4.5MB limit
+      const BATCH = 500
+      const batches = Math.ceil(parsed.length / BATCH)
+      let batchOk = true
+      for (let b = 0; b < batches; b++) {
+        const chunk = parsed.slice(b * BATCH, (b + 1) * BATCH)
+        setIP(`กำลังบันทึก batch ${b+1}/${batches} (${fmtNum(chunk.length)} รายการ)...`)
+        try {
+          const j = await fetch('/api/seamless', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rows: chunk }),
+          }).then(r => r.json())
+          if (j.ok) {
+            totalNew += j.imported ?? 0; totalSkip += chunk.length - (j.imported ?? 0)
+            setRows(prev => {
+              const ex = new Set(prev.map(r => `${r.trans_id}|${r.item_seq}`))
+              return [...prev, ...chunk.filter(r => !ex.has(`${r.trans_id}|${r.item_seq}`))]
+            })
+          } else { showToast(`บันทึก batch ${b+1} ไม่สำเร็จ: ${j.error}`, false); batchOk = false; break }
+        } catch (e) { showToast(String(e), false); batchOk = false; break }
+      }
+      if (!batchOk) continue
     }
     showToast(
       totalNew > 0 ? `✓ เพิ่มใหม่ ${fmtNum(totalNew)} · ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ` : `ไม่มีข้อมูลใหม่ (ซ้ำ ${fmtNum(totalSkip)})`,
