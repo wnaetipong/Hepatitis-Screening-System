@@ -175,7 +175,14 @@ export function SeamlessPage() {
 
   useEffect(() => {
     fetch('/api/seamless').then(r => r.json())
-      .then(j => { if (j.ok) setRows(j.data); else showToast(j.error, false) })
+      .then(j => {
+        if (j.ok) {
+          setRows(j.data)
+          // debug: ดู hsend values จาก Supabase
+          const sample = (j.data as SeamlessRow[]).slice(0, 3)
+          console.log('[Seamless] sample rows hsend:', sample.map((r: SeamlessRow) => ({hsend: r.hsend, hmain: r.hmain, name: r.name})))
+        } else showToast(j.error, false)
+      })
       .catch(e => showToast(String(e), false))
       .finally(() => setDbLoading(false))
   }, [showToast])
@@ -246,7 +253,7 @@ export function SeamlessPage() {
           : filterType === 'hepC' ? hepRows.filter(x => isHepC(x.service_name)) : hepRows
     if (filterStatus !== 'all') r = r.filter(x => x.status === filterStatus)
     // กรองตาม HSEND (multi-select)
-    if (filterHsend.length > 0) r = r.filter(x => filterHsend.includes(x.hsend))
+    if (filterHsend.length > 0) r = r.filter(x => filterHsend.includes(x.hsend || x.hmain || ''))
     if (search.trim()) {
       const q = search.trim().toLowerCase()
       r = r.filter(x => x.name.toLowerCase().includes(q) || x.pid.includes(q) ||
@@ -268,7 +275,7 @@ export function SeamlessPage() {
       uniqueB: new Set(hepB.map(r => r.pid)).size,
       uniqueC: new Set(hepC.map(r => r.pid)).size,
       sourceFiles: [...new Set(rows.map(r => r.source_file))],
-      hsendOptions: [...new Set(hepRows.map(r => r.hsend).filter(Boolean))].sort(),
+      hsendOptions: [...new Set(rows.map(r => (r.hsend || r.hmain || '')).filter(Boolean))].sort(),
     }
   }, [hepRows, rows])
 
@@ -451,7 +458,7 @@ export function SeamlessPage() {
               >
                 <option value="">หน่วยบริการ (HSEND){filterHsend.length > 0 ? ` ✓${filterHsend.length}` : ''}</option>
                 {stats.hsendOptions.map(h => (
-                  <option key={h} value={h} style={{fontWeight: filterHsend.includes(h) ? 'bold' : 'normal'}}>
+                  <option key={h} value={h}>
                     {filterHsend.includes(h) ? '✓ ' : ''}{h}
                   </option>
                 ))}
