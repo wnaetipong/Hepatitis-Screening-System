@@ -22,15 +22,20 @@ export function Topbar({ cfg, onReload, onSettings }: TopbarProps) {
     <header className="h-16 bg-white border-b border-gray-200 px-8 flex items-center justify-between sticky top-0 z-50 shadow-sm">
       {/* Logo + Title */}
       <div className="flex items-center gap-3">
-        <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-600 to-teal-500 flex items-center justify-center shadow-sm flex-shrink-0">
-          <span className="text-white font-black text-[14px]">WHP</span>
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center shadow-sm flex-shrink-0 overflow-hidden border border-gray-100"
+          style={{background: cfg.logoData ? 'transparent' : 'linear-gradient(135deg,#2563eb,#0891b2)'}}>
+          {cfg.logoData
+            ? <img src={cfg.logoData} alt="logo" className="w-full h-full object-cover"/>
+            : <span className="text-white font-black text-[14px]">WHP</span>
+          }
         </div>
         <div>
           <div className="text-[13.5px] font-black text-gray-900 leading-tight">
-            ระบบติดตามการคัดกรองไวรัสตับอักเสบ บี และ ซี
+            {cfg.orgName || 'ระบบติดตามการคัดกรองไวรัสตับอักเสบ บี และ ซี'}
           </div>
           <div className="text-[11px] text-gray-400 leading-tight">
-            กลุ่มงานบริการด้านปฐมภูมิและองค์รวม · โรงพยาบาลวังทรายพูน
+            {cfg.orgDept || 'กลุ่มงานบริการด้านปฐมภูมิและองค์รวม'} · โรงพยาบาลวังทรายพูน
           </div>
         </div>
       </div>

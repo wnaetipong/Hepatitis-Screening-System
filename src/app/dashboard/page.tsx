@@ -108,7 +108,7 @@ export default function DashboardPage() {
       {activeTab === 'seamless' && (
         // ส่ง onOpenSettings เข้าไปเพื่อให้ SeamlessPage เปิด panel ได้
         <SeamlessPage
-          onOpenSettings={() => openSettings('seamless')}
+          onOpenSettings={() => openSettings('import')}
           sharedSumRows={sumRows}
           sharedSmtRows={smtRows}
           onSumRowsChange={setSumRows}

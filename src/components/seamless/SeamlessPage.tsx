@@ -780,19 +780,10 @@ export function SeamlessPage({
         </div>
       </div>
 
-      {/* Sub-tabs */}
-      <div className="flex gap-1 p-1 bg-gray-100 rounded-xl mb-6 w-fit">
-        {([['individual','📋 REP Individual'],['summary','📑 REP Summary'],['smt','💳 SMT']] as const).map(([tab,label])=>(
-          <button key={tab} type="button" onClick={()=>setSubTab(tab)}
-            className={cn('px-5 py-2 text-[12.5px] font-semibold rounded-lg transition-all',subTab===tab?'bg-white text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>
-            {label}
-          </button>
-        ))}
-      </div>
 
-      {/* ── TAB: INDIVIDUAL ── */}
-      {subTab==='individual'&&(
-        <>
+
+      {/* ── Individual Content ── */}
+      <>
 
 
           {indRows.length>0&&<>
@@ -949,119 +940,6 @@ export function SeamlessPage({
               </div>}
             </div>
           </>}
-        </>
-      )}
-
-      {/* ── TAB: REP SUMMARY ── */}
-      {subTab==='summary'&&(
-        <div className="space-y-5">
-
-
-          {sumRows.length===0?(
-            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
-              <div className="text-4xl mb-4 opacity-30">📑</div>
-              <div className="text-[14px]">ยังไม่มีข้อมูล REP Summary</div>
-              <div className="text-[12px] mt-1">กด Upload ที่ปีงบที่ต้องการด้านบน</div>
-            </div>
-          ):(
-            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-              <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-purple-500"/>
-                <div className="font-bold text-gray-900">REP Batch ทั้งหมด</div>
-                <span className="ml-2 text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{sumRows.length} batch</span>
-              </div>
-              <div className="overflow-x-auto" style={{maxHeight:'70vh'}}>
-                <table className="w-full border-collapse text-[12px]">
-                  <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
-                    <tr>{['REP NO.','REP Date','งวด (SMT ref)','เรียกเก็บ (รายการ)','เรียกเก็บ (฿)','ชดเชย (รายการ)','ชดเชย (฿)','ไม่ชดเชย','อัตรา','สถานะโอน','วันโอน','ปีงบ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {sumRows.map((r,i)=>{
-                      const refs=r.smt_ref.split(',').map(s=>s.trim()).filter(Boolean)
-                      const smtInfo=refs.map(ref=>smtRows.find(s=>s.smt_ref===ref)).find(Boolean)
-                      const pct=r.n_claim>0?(r.n_comp/r.n_claim*100):0
-                      return <tr key={r.id??i} className="border-b border-gray-100 hover:bg-purple-50/30 transition-all even:bg-gray-50/20">
-                        <td className="px-3 py-2.5 font-mono text-[11px] text-purple-700 font-bold">{r.rep_no}</td>
-                        <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.rep_date}</td>
-                        <td className="px-3 py-2.5 font-mono text-[10.5px] text-gray-500">{r.smt_ref||'—'}</td>
-                        <td className="px-3 py-2.5 text-right font-mono">{fmtNum(r.n_claim)}</td>
-                        <td className="px-3 py-2.5 text-right font-mono font-bold text-gray-700">฿{fmtBaht(r.b_claim)}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-emerald-600">{fmtNum(r.n_comp)}</td>
-                        <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-600">฿{fmtBaht(r.b_comp)}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-red-400">{fmtNum(r.n_notcomp)}</td>
-                        <td className="px-3 py-2.5"><div className="flex items-center gap-1.5"><div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className="h-full bg-emerald-500 rounded-full" style={{width:`${pct}%`}}/></div><span className="text-[10.5px] text-gray-500 w-10 text-right">{pct.toFixed(0)}%</span></div></td>
-                        <td className="px-3 py-2.5 text-center">{smtRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:smtInfo?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}</td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{smtInfo?.transfer_date??'—'}</td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-400">{r.fiscal_year}</td>
-                      </tr>
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── TAB: SMT ── */}
-      {subTab==='smt'&&(
-        <div className="space-y-5">
-
-
-          {smtRows.length===0?(
-            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
-              <div className="text-4xl mb-4 opacity-30">💳</div>
-              <div className="text-[14px]">ยังไม่มีข้อมูล SMT</div>
-              <div className="text-[12px] mt-1">กด Upload ที่ปีงบที่ต้องการด้านบน</div>
-              <div className="text-[11px] mt-1 text-gray-300">ระบบจะกรองเฉพาะรายการ DKTP โดยอัตโนมัติ</div>
-            </div>
-          ):(
-            <>
-              <div className="grid grid-cols-3 gap-4">
-                {[...new Set(smtRows.map(r=>r.fiscal_year))].sort().map(yr=>{
-                  const yrRows=smtRows.filter(r=>r.fiscal_year===yr)
-                  return <div key={yr} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                    <div className="text-[11px] text-gray-400 uppercase tracking-wider mb-1">ปีงบ {yr}</div>
-                    <div className="text-[22px] font-black text-gray-900">฿{fmtBaht(yrRows.reduce((a,b)=>a+b.transferred,0))}</div>
-                    <div className="text-[12px] text-gray-500 mt-1">{fmtNum(yrRows.length)} รายการโอน DKTP</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">{[...new Set(yrRows.map(r=>r.source_file))].join(', ')}</div>
-                  </div>
-                })}
-              </div>
-              <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="px-6 py-4 border-b border-gray-100 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-teal-500"/>
-                  <div className="font-bold text-gray-900">รายการโอนเงิน DKTP ทั้งหมด</div>
-                  <span className="ml-2 text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{smtRows.length} รายการ</span>
-                </div>
-                <div className="overflow-x-auto" style={{maxHeight:'60vh'}}>
-                  <table className="w-full border-collapse text-[12px]">
-                    <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
-                      <tr>{['วันที่โอน','Batch No.','งวด/เลขที่เบิกจ่าย','กองทุนย่อย','จำนวนเงิน','คงเหลือ','เงินโอนเข้าบัญชี','ปีงบ','REP Batch ที่เชื่อม'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
-                    </thead>
-                    <tbody>
-                      {smtRows.map((r,i)=>{
-                        const linked=sumRows.filter(s=>s.smt_ref.split(',').map(x=>x.trim()).includes(r.smt_ref))
-                        return <tr key={r.id??i} className="border-b border-gray-100 hover:bg-teal-50/30 transition-all even:bg-gray-50/20">
-                          <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap font-mono text-[11px]">{r.transfer_date}</td>
-                          <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{r.batch_no}</td>
-                          <td className="px-3 py-2.5 font-mono text-[11px] text-teal-700 font-bold">{r.smt_ref}</td>
-                          <td className="px-3 py-2.5 text-[11px] text-gray-500 max-w-[160px]"><span className="truncate block">{r.fund_sub||r.fund||'—'}</span></td>
-                          <td className="px-3 py-2.5 text-right font-mono text-gray-700">฿{fmtBaht(r.amount)}</td>
-                          <td className="px-3 py-2.5 text-right font-mono text-gray-600">฿{fmtBaht(r.net)}</td>
-                          <td className="px-3 py-2.5 text-right font-mono font-bold text-emerald-600">฿{fmtBaht(r.transferred)}</td>
-                          <td className="px-3 py-2.5 text-[11px] text-gray-400">{r.fiscal_year}</td>
-                          <td className="px-3 py-2.5">{linked.length>0?<span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-bold">{linked.map(s=>s.rep_no).join(', ')}</span>:<span className="text-gray-300 text-[11px]">—</span>}</td>
-                        </tr>
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
     </div>
   )
 }

@@ -8,8 +8,8 @@ import { SeamlessImportPanel } from '../seamless/SeamlessImportPanel'
 import type { SummaryRow, SmtRow } from '../seamless/SeamlessImportPanel'
 
 // ── Types ──────────────────────────────────────────────────────────
-export type PanelTab = 'settings' | 'import' | 'seamless'
-type ImportSubTab = 'csv' | 'vil'
+export type PanelTab = 'settings' | 'import'
+type ImportSubTab = 'csv' | 'vil' | 'seamless'
 
 interface Props {
   open: boolean
@@ -312,7 +312,6 @@ export function SettingsPanel({
           {([
             { key: 'settings',  label: '⚙️ ตั้งค่าระบบ' },
             { key: 'import',    label: '📥 นำเข้าข้อมูล' },
-            { key: 'seamless',  label: '📋 Seamless DMIS' },
           ] as { key: PanelTab; label: string }[]).map(({ key, label }) => (
             <button key={key} onClick={() => setPanelTab(key)}
               className={cn(
@@ -419,13 +418,17 @@ export function SettingsPanel({
           {panelTab === 'import' && (
             <div className="px-6 py-5 space-y-5">
               <div className="flex gap-1 p-1 bg-gray-100 rounded-[10px]">
-                {(['csv', 'vil'] as const).map(t => (
-                  <button key={t} onClick={() => setImportTab(t)}
+                {([
+                  ['csv', '📊 ข้อมูลคัดกรอง (CSV)'],
+                  ['vil', '📋 กลุ่มเป้าหมาย (.xlsx)'],
+                  ['seamless', '🏥 Seamless DMIS'],
+                ] as const).map(([t, label]) => (
+                  <button key={t} onClick={() => setImportTab(t as ImportSubTab)}
                     className={cn(
-                      'flex-1 py-2 text-[12px] font-medium rounded-lg transition-all whitespace-nowrap',
+                      'flex-1 py-2 text-[11.5px] font-medium rounded-lg transition-all whitespace-nowrap',
                       importTab === t ? 'bg-white font-bold text-blue-600 shadow-sm' : 'text-gray-500 hover:text-blue-500',
                     )}>
-                    {t === 'csv' ? '📊 ข้อมูลคัดกรอง (CSV)' : '📋 กลุ่มเป้าหมาย (.xlsx)'}
+                    {label}
                   </button>
                 ))}
               </div>
@@ -589,21 +592,19 @@ export function SettingsPanel({
                   ]} />
                 </div>
               )}
-            </div>
-          )}
 
-          {/* ════ Seamless tab ════ */}
-          {panelTab === 'seamless' && (
-            <div className="px-6 py-5">
-              <SeamlessImportPanel
-                sumRows={sumRows}
-                smtRows={smtRows}
-                onSumImported={onSumImported ?? (() => {})}
-                onSmtImported={onSmtImported ?? (() => {})}
-                onSumDeleteYear={onSumDeleteYear ?? (() => {})}
-                onSmtDeleteYear={onSmtDeleteYear ?? (() => {})}
-                showToast={showToastSeamless}
-              />
+              {/* ── Seamless DMIS sub-panel ── */}
+              {importTab === 'seamless' && (
+                <SeamlessImportPanel
+                  sumRows={sumRows}
+                  smtRows={smtRows}
+                  onSumImported={onSumImported ?? (() => {})}
+                  onSmtImported={onSmtImported ?? (() => {})}
+                  onSumDeleteYear={onSumDeleteYear ?? (() => {})}
+                  onSmtDeleteYear={onSmtDeleteYear ?? (() => {})}
+                  showToast={showToastSeamless}
+                />
+              )}
             </div>
           )}
         </div>
