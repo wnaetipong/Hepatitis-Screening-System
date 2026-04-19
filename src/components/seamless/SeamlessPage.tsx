@@ -109,132 +109,160 @@ function getReasonLabel(note: string, noteOther: string): string {
 const RIGHTS_LABEL: Record<string, string> = { UCS:'บัตรทอง', WEL:'สวัสดิการข้าราชการ', SSS:'ประกันสังคม', OFC:'ต่างด้าว', LGO:'อปท.' }
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
-// ── Monthly Chart (SVG) ───────────────────────────────────────────
-function MiniBarChart({ data }: { data: { label: string; b: number; c: number; comp: number }[] }) {
-  const [hoveredIdx, setHoveredIdx] = useState<number|null>(null)
+// ── Monthly Chart ─────────────────────────────────────────────────
+function MiniBarChart({ data }: { data: { label: string; b: number; c: number; comp: number; amount: number }[] }) {
+  const [hov, setHov] = useState<number|null>(null)
+  if (!data.length) return (
+    <div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>
+  )
 
-  if (!data.length) return <div className="flex items-center justify-center h-48 text-gray-300 text-sm">ไม่มีข้อมูล</div>
-
-  const W = 900, H = 220
-  const PAD = { t: 48, b: 52, l: 52, r: 24 }
+  const W = 960, H = 240
+  const PAD = { t: 36, b: 56, l: 56, r: 64 }
   const chartW = W - PAD.l - PAD.r
   const chartH = H - PAD.t - PAD.b
 
-  const maxVal = Math.max(...data.map(d => d.b + d.c), 1)
-  // nice round ceiling
-  const magnitude = Math.pow(10, Math.floor(Math.log10(maxVal)))
-  const niceMax = Math.ceil(maxVal / magnitude) * magnitude
+  // left axis: บริการ (B+C)
+  const maxSvc  = Math.max(...data.map(d => d.b + d.c), 1)
+  const magSvc  = Math.pow(10, Math.floor(Math.log10(maxSvc)))
+  const niceL   = Math.ceil(maxSvc / magSvc) * magSvc
 
-  const slotW = chartW / data.length
-  const bw = Math.max(6, Math.min(14, slotW / 2.8))
-  const GRID_LINES = 4
+  // right axis: ชดเชย (จำนวนรายการ)
+  const maxComp = Math.max(...data.map(d => d.comp), 1)
+  const magComp = Math.pow(10, Math.floor(Math.log10(maxComp)))
+  const niceR   = Math.ceil(maxComp / magComp) * magComp
 
-  // polyline points for comp line
+  const n = data.length
+  const slotW = chartW / n
+  const bw = Math.max(7, Math.min(18, slotW / 2.6))
+  const GRIDS = 4
+
+  // comp line points (right axis scale)
   const linePoints = data.map((d, i) => {
     const x = PAD.l + slotW * i + slotW / 2
-    const y = PAD.t + chartH * (1 - d.comp / niceMax)
-    return `${x},${y}`
+    const y = PAD.t + chartH * (1 - d.comp / niceR)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
   }).join(' ')
 
+  // area under comp line
+  const areaPoints = [
+    `${(PAD.l + slotW * 0 + slotW/2).toFixed(1)},${(PAD.t + chartH).toFixed(1)}`,
+    ...data.map((d,i) => {
+      const x = PAD.l + slotW * i + slotW / 2
+      const y = PAD.t + chartH * (1 - d.comp / niceR)
+      return `${x.toFixed(1)},${y.toFixed(1)}`
+    }),
+    `${(PAD.l + slotW * (n-1) + slotW/2).toFixed(1)},${(PAD.t + chartH).toFixed(1)}`,
+  ].join(' ')
+
   return (
-    <div className="relative w-full" style={{userSelect:'none'}}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height: H, overflow:'visible'}}>
+    <div className="w-full" onMouseLeave={() => setHov(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height:'auto', overflow:'visible'}}>
         <defs>
-          <linearGradient id="gradB" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#3b82f6"/>
-            <stop offset="100%" stopColor="#1d4ed8"/>
+          <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#3b82f6"/><stop offset="100%" stopColor="#1e40af"/>
           </linearGradient>
-          <linearGradient id="gradC" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#22d3ee"/>
-            <stop offset="100%" stopColor="#0891b2"/>
+          <linearGradient id="gc" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#06b6d4"/><stop offset="100%" stopColor="#0891b2"/>
           </linearGradient>
-          <linearGradient id="gradComp" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#10b981" stopOpacity="0.15"/>
-            <stop offset="100%" stopColor="#10b981" stopOpacity="0"/>
+          <linearGradient id="ga" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="#10b981" stopOpacity="0.18"/>
+            <stop offset="100%" stopColor="#10b981" stopOpacity="0.01"/>
           </linearGradient>
-          <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-            <feDropShadow dx="0" dy="2" stdDeviation="3" floodColor="#000" floodOpacity="0.08"/>
-          </filter>
+          <filter id="ds"><feDropShadow dx="0" dy="1" stdDeviation="2" floodOpacity="0.12"/></filter>
+          <filter id="ds2"><feDropShadow dx="0" dy="2" stdDeviation="4" floodOpacity="0.18"/></filter>
+          <clipPath id="chartClip">
+            <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH}/>
+          </clipPath>
         </defs>
 
-        {/* background */}
-        <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} fill="#fafafa" rx="4"/>
+        {/* chart bg */}
+        <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} fill="#f9fafb" rx="6"/>
 
-        {/* grid lines */}
-        {Array.from({length: GRID_LINES + 1}, (_, i) => {
-          const pct = i / GRID_LINES
-          const val = Math.round(niceMax * pct)
+        {/* grid + left axis */}
+        {Array.from({length: GRIDS + 1}, (_,i) => {
+          const pct = i / GRIDS
           const y = PAD.t + chartH * (1 - pct)
+          const val = Math.round(niceL * pct)
           return (
             <g key={i}>
               <line x1={PAD.l} y1={y} x2={PAD.l + chartW} y2={y}
-                stroke={i === 0 ? '#e5e7eb' : '#f3f4f6'} strokeWidth={i === 0 ? 1.5 : 1}/>
-              <text x={PAD.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#9ca3af" fontFamily="monospace">
-                {val >= 1000 ? `${(val/1000).toFixed(1)}k` : val}
+                stroke={i === 0 ? '#d1d5db' : '#e5e7eb'} strokeWidth={i===0?1.5:1}
+                strokeDasharray={i > 0 ? '4,3' : undefined}/>
+              <text x={PAD.l - 8} y={y + 4} textAnchor="end" fontSize="10" fill="#9ca3af">
+                {val >= 1000 ? `${(val/1000).toFixed(val%1000===0?0:1)}k` : val}
               </text>
             </g>
           )
         })}
 
-        {/* year group separators */}
+        {/* right axis (comp) */}
+        {Array.from({length: GRIDS + 1}, (_,i) => {
+          const pct = i / GRIDS
+          const y = PAD.t + chartH * (1 - pct)
+          const val = Math.round(niceR * pct)
+          return (
+            <text key={i} x={PAD.l + chartW + 8} y={y + 4} textAnchor="start" fontSize="10" fill="#6ee7b7">
+              {val >= 1000 ? `${(val/1000).toFixed(val%1000===0?0:1)}k` : val}
+            </text>
+          )
+        })}
+
+        {/* right axis label */}
+        <text x={PAD.l + chartW + PAD.r - 4} y={PAD.t - 10} textAnchor="end" fontSize="9" fill="#10b981" fontWeight="600">ชดเชย (รายการ)</text>
+
+        {/* year separators */}
         {data.map((d, i) => {
           if (i === 0) return null
-          const prevYear = data[i-1].label.split('/')[0]
-          const thisYear = d.label.split('/')[0]
-          if (prevYear === thisYear) return null
+          const pY = data[i-1].label.split('/')[0], tY = d.label.split('/')[0]
+          if (pY === tY) return null
           const x = PAD.l + slotW * i
           return (
-            <g key={`sep-${i}`}>
-              <line x1={x} y1={PAD.t} x2={x} y2={PAD.t + chartH} stroke="#d1d5db" strokeWidth="1" strokeDasharray="4,3"/>
-              <text x={x + 4} y={PAD.t - 8} fontSize="10" fill="#6b7280" fontWeight="600">ปี {thisYear}</text>
+            <g key={`yr-${i}`}>
+              <line x1={x} y1={PAD.t} x2={x} y2={PAD.t+chartH} stroke="#9ca3af" strokeWidth="1" strokeDasharray="5,3"/>
+              <rect x={x+3} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/>
+              <text x={x+22} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="700">ปี {tY}</text>
             </g>
           )
         })}
 
-        {/* bars */}
-        {data.map((d, i) => {
-          const cx = PAD.l + slotW * i + slotW / 2
-          const hB = (d.b / niceMax) * chartH
-          const hC = (d.c / niceMax) * chartH
-          const isHov = hoveredIdx === i
-          const opacity = hoveredIdx === null ? 1 : isHov ? 1 : 0.4
+        {/* bars (clipped) */}
+        <g clipPath="url(#chartClip)">
+          {data.map((d, i) => {
+            const cx = PAD.l + slotW * i + slotW / 2
+            const hB = Math.max(0, (d.b / niceL) * chartH)
+            const hC = Math.max(0, (d.c / niceL) * chartH)
+            const isHov = hov === i
+            const fade = hov !== null && !isHov
+            return (
+              <g key={d.label} opacity={fade ? 0.35 : 1} style={{transition:'opacity .15s'}}
+                onMouseEnter={() => setHov(i)}>
+                {isHov && <rect x={PAD.l + slotW*i} y={PAD.t} width={slotW} height={chartH} fill="#eff6ff" opacity="0.7"/>}
+                <rect x={cx - bw - 1.5} y={PAD.t+chartH-hB} width={bw} height={hB} fill="url(#gb)" rx="3" filter="url(#ds)"/>
+                <rect x={cx + 1.5} y={PAD.t+chartH-hC} width={bw} height={hC} fill="url(#gc)" rx="3" filter="url(#ds)"/>
+              </g>
+            )
+          })}
+        </g>
 
-          return (
-            <g key={d.label}
-              onMouseEnter={() => setHoveredIdx(i)}
-              onMouseLeave={() => setHoveredIdx(null)}
-              style={{cursor:'default', transition:'opacity 0.15s'}}
-              opacity={opacity}
-            >
-              {/* hover bg */}
-              {isHov && <rect x={PAD.l + slotW * i} y={PAD.t} width={slotW} height={chartH} fill="#f0f9ff" rx="0"/>}
-              {/* bar B */}
-              <rect x={cx - bw - 1} y={PAD.t + chartH - hB} width={bw} height={hB}
-                fill="url(#gradB)" rx="3" filter="url(#shadow)"/>
-              {/* bar C */}
-              <rect x={cx + 1} y={PAD.t + chartH - hC} width={bw} height={hC}
-                fill="url(#gradC)" rx="3" filter="url(#shadow)"/>
-            </g>
-          )
-        })}
-
-        {/* comp line area fill */}
-        <polygon
-          points={`${PAD.l + slotW * 0 + slotW/2},${PAD.t + chartH} ${linePoints} ${PAD.l + slotW * (data.length-1) + slotW/2},${PAD.t + chartH}`}
-          fill="url(#gradComp)"/>
+        {/* comp area fill */}
+        <polygon points={areaPoints} fill="url(#ga)" clipPath="url(#chartClip)"/>
 
         {/* comp polyline */}
-        <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2" strokeLinejoin="round" strokeLinecap="round"/>
+        <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2.5"
+          strokeLinejoin="round" strokeLinecap="round" clipPath="url(#chartClip)"/>
 
         {/* comp dots */}
         {data.map((d, i) => {
           const x = PAD.l + slotW * i + slotW / 2
-          const y = PAD.t + chartH * (1 - d.comp / niceMax)
-          const isHov = hoveredIdx === i
+          const y = PAD.t + chartH * (1 - d.comp / niceR)
+          const isHov = hov === i
           return (
-            <circle key={i} cx={x} cy={y} r={isHov ? 5 : 3}
-              fill={isHov ? '#059669' : 'white'} stroke="#10b981" strokeWidth="2"
-              style={{transition: 'r 0.1s'}}/>
+            <circle key={i} cx={x} cy={y}
+              r={isHov ? 6 : d.comp > 0 ? 3.5 : 0}
+              fill={isHov ? '#059669' : '#fff'} stroke="#10b981" strokeWidth="2"
+              filter={isHov ? 'url(#ds2)' : undefined}
+              style={{transition:'r .1s'}}
+              onMouseEnter={() => setHov(i)}/>
           )
         })}
 
@@ -243,14 +271,14 @@ function MiniBarChart({ data }: { data: { label: string; b: number; c: number; c
           const x = PAD.l + slotW * i + slotW / 2
           const mm = parseInt(d.label.split('/')[1])
           const yy = d.label.split('/')[0].slice(2)
-          const isHov = hoveredIdx === i
+          const isHov = hov === i
           return (
             <g key={`lbl-${i}`}>
-              <text x={x} y={PAD.t + chartH + 16} textAnchor="middle" fontSize="10"
-                fill={isHov ? '#1d4ed8' : '#9ca3af'} fontWeight={isHov ? '700' : '400'}>
+              <text x={x} y={PAD.t+chartH+16} textAnchor="middle" fontSize="10.5"
+                fill={isHov ? '#2563eb' : '#6b7280'} fontWeight={isHov ? '700' : '400'}>
                 {MONTH_TH[mm]}
               </text>
-              <text x={x} y={PAD.t + chartH + 28} textAnchor="middle" fontSize="9" fill="#c9d1d9">
+              <text x={x} y={PAD.t+chartH+29} textAnchor="middle" fontSize="9" fill="#c9d1d9">
                 {yy}
               </text>
             </g>
@@ -259,47 +287,64 @@ function MiniBarChart({ data }: { data: { label: string; b: number; c: number; c
 
         {/* first year label */}
         {data.length > 0 && (
-          <text x={PAD.l + 4} y={PAD.t - 8} fontSize="10" fill="#6b7280" fontWeight="600">
-            ปี {data[0].label.split('/')[0]}
-          </text>
+          <g>
+            <rect x={PAD.l+2} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/>
+            <text x={PAD.l+21} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="700">
+              ปี {data[0].label.split('/')[0]}
+            </text>
+          </g>
         )}
 
         {/* hover tooltip */}
-        {hoveredIdx !== null && (() => {
-          const d = data[hoveredIdx]
-          const cx = PAD.l + slotW * hoveredIdx + slotW / 2
-          const tw = 130, th = 82
-          const tx = Math.min(cx - tw/2, W - tw - 8)
-          const ty = PAD.t - th - 8
+        {hov !== null && (() => {
+          const d = data[hov]
+          const cx = PAD.l + slotW * hov + slotW / 2
           const total = d.b + d.c
-          const compPct = total ? (d.comp/total*100).toFixed(1) : '0'
+          const tw = 148, th = 102
+          const tx = Math.max(PAD.l, Math.min(cx - tw/2, W - PAD.r - tw))
+          const ty = PAD.t - th - 12
+          const mm = parseInt(d.label.split('/')[1])
           return (
             <g>
-              <rect x={tx} y={ty} width={tw} height={th} rx="8" fill="white"
-                stroke="#e5e7eb" strokeWidth="1" filter="url(#shadow)"/>
-              <text x={tx+10} y={ty+16} fontSize="10" fontWeight="700" fill="#374151">
-                {MONTH_TH[parseInt(d.label.split('/')[1])]} {d.label.split('/')[0]}
+              <rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white"
+                stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds2)"/>
+              {/* header */}
+              <rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/>
+              <rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/>
+              <text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">
+                {MONTH_TH[mm]} {d.label.split('/')[0]}
               </text>
-              <rect x={tx+10} y={ty+23} width="6" height="6" fill="#3b82f6" rx="1"/>
-              <text x={tx+20} y={ty+30} fontSize="9.5" fill="#6b7280">บี: <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text>
-              <rect x={tx+10} y={ty+36} width="6" height="6" fill="#22d3ee" rx="1"/>
-              <text x={tx+20} y={ty+43} fontSize="9.5" fill="#6b7280">ซี: <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text>
-              <circle cx={tx+13} cy={ty+52} r="3" fill="none" stroke="#10b981" strokeWidth="2"/>
-              <text x={tx+20} y={ty+56} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{compPct}%</tspan></text>
-              <text x={tx+10} y={ty+70} fontSize="9" fill="#9ca3af">รวม {total.toLocaleString()} รายการ</text>
+              {/* rows */}
+              <rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/>
+              <text x={tx+22} y={ty+41} fontSize="10" fill="#374151">ตับอักเสบ บี</text>
+              <text x={tx+tw-10} y={ty+41} textAnchor="end" fontSize="10" fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</text>
+
+              <rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/>
+              <text x={tx+22} y={ty+56} fontSize="10" fill="#374151">ตับอักเสบ ซี</text>
+              <text x={tx+tw-10} y={ty+56} textAnchor="end" fontSize="10" fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</text>
+
+              <line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/>
+
+              <circle cx={tx+14} cy={ty+73} r="4" fill="none" stroke="#10b981" strokeWidth="2"/>
+              <text x={tx+22} y={ty+77} fontSize="10" fill="#374151">ชดเชย (ส่งข้อมูล)</text>
+              <text x={tx+tw-10} y={ty+77} textAnchor="end" fontSize="10" fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</text>
+
+              <text x={tx+10} y={ty+92} fontSize="9" fill="#9ca3af">บริการรวม {total.toLocaleString()} รายการ</text>
+              {d.amount > 0 && <text x={tx+tw-10} y={ty+92} textAnchor="end" fontSize="9" fill="#6ee7b7">฿{(d.amount).toLocaleString()}</text>}
             </g>
           )
         })()}
 
         {/* legend */}
         <g transform={`translate(${PAD.l}, 8)`}>
-          <rect x="0" y="0" width="10" height="10" fill="url(#gradB)" rx="2"/>
-          <text x="14" y="9" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text>
-          <rect x="84" y="0" width="10" height="10" fill="url(#gradC)" rx="2"/>
-          <text x="98" y="9" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text>
-          <line x1="170" y1="5" x2="184" y2="5" stroke="#10b981" strokeWidth="2"/>
-          <circle cx="177" cy="5" r="2.5" fill="white" stroke="#10b981" strokeWidth="2"/>
-          <text x="188" y="9" fontSize="10" fill="#4b5563">ชดเชยแล้ว</text>
+          <rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/>
+          <text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text>
+          <rect x="82" y="1" width="10" height="10" fill="url(#gc)" rx="2"/>
+          <text x="96" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text>
+          <line x1="172" y1="6" x2="186" y2="6" stroke="#10b981" strokeWidth="2.5"/>
+          <circle cx="179" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/>
+          <text x="190" y="10" fontSize="10" fill="#4b5563">ชดเชย ตาม</text>
+          <text x="190" y="21" fontSize="9" fill="#9ca3af">วันส่งข้อมูล สปสช.</text>
         </g>
       </svg>
     </div>
@@ -474,18 +519,36 @@ export function SeamlessPage() {
   }, [hepRowsFiltered])
 
   // แนวโน้มรายเดือน
+  // บริการ → จัดตาม service_date | ชดเชย → จัดตาม send_date (วันที่ สปสช. จ่ายจริง)
   const monthlyData = useMemo(() => {
-    const map: Record<string,{b:number;c:number;comp:number}> = {}
+    const svc: Record<string,{b:number;c:number}> = {}
+    const pay: Record<string,{comp:number;amount:number}> = {}
     for (const r of hepRowsFiltered) {
-      const dp = parseDateParts(r.service_date)
-      if (!dp) continue
-      const key = `${dp.year}/${dp.month}`
-      if (!map[key]) map[key] = { b:0, c:0, comp:0 }
-      if (isHepB(r.service_name)) map[key].b++
-      if (isHepC(r.service_name)) map[key].c++
-      if (r.status === 'ชดเชย') map[key].comp++
+      const ds = parseDateParts(r.service_date)
+      if (ds) {
+        const k = `${ds.year}/${ds.month}`
+        if (!svc[k]) svc[k] = {b:0,c:0}
+        if (isHepB(r.service_name)) svc[k].b++
+        else svc[k].c++
+      }
+      if (r.status === 'ชดเชย') {
+        const dp = parseDateParts(r.send_date)
+        if (dp) {
+          const k = `${dp.year}/${dp.month}`
+          if (!pay[k]) pay[k] = {comp:0,amount:0}
+          pay[k].comp++
+          pay[k].amount += r.compensated
+        }
+      }
     }
-    return Object.entries(map).sort((a,b) => a[0].localeCompare(b[0])).map(([label,v]) => ({ label, ...v }))
+    const allMonths = [...new Set([...Object.keys(svc), ...Object.keys(pay)])].sort()
+    return allMonths.map(label => ({
+      label,
+      b: svc[label]?.b ?? 0,
+      c: svc[label]?.c ?? 0,
+      comp: pay[label]?.comp ?? 0,
+      amount: pay[label]?.amount ?? 0,
+    }))
   }, [hepRowsFiltered])
 
   // สิทธิ breakdown
