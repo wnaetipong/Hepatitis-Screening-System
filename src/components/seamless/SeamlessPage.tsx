@@ -115,7 +115,7 @@ async function parseSummary(file: File): Promise<{ rows: SummaryRow[]; error?: s
       const smtRef = (smtRaw === 'nan' || smtRaw === 'NaN') ? '' : smtRaw
       // ปีงบจาก rep_no: DKTP66... → 2566
       const yyStr = repNo.substring(4, 6)
-      const fiscalYear = yyStr ? \`25\${yyStr}\` : ''
+      const fiscalYear = yyStr ? `25${yyStr}` : ''
       rows.push({
         zone: col0, province: cv(row,1), hsend: cv(row,3), hospital_name: cv(row,4),
         smt_ref: smtRef, rep_no: repNo, rep_date: cv(row,6),
@@ -628,7 +628,7 @@ export function SeamlessPage() {
     const svc:Record<string,{b:number;c:number}>={} 
     for(const r of hepRowsFiltered){
       const ds=parseDateParts(r.service_date)
-      if(ds){const k=`\${ds.year}/\${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};if(isHepB(r.service_name))svc[k].b++;else svc[k].c++}
+      if(ds){const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};if(isHepB(r.service_name))svc[k].b++;else svc[k].c++}
     }
     // เส้นชดเชย → ถ้ามี SMT ให้อิง transfer_date จาก SMT จริง
     // ถ้ายังไม่มี SMT → fallback ใช้ send_date จาก Individual
@@ -652,7 +652,7 @@ export function SeamlessPage() {
         const parts=tDate.split('-')
         if(parts.length!==3) continue
         const yy=parts[0]; const mm=parts[1]
-        const k=`\${yy}/\${mm}`
+        const k=`${yy}/${mm}`
         if(!pay[k])pay[k]={comp:0,amount:0}
         pay[k].comp++;pay[k].amount+=r.compensated
       }
@@ -661,7 +661,7 @@ export function SeamlessPage() {
       for(const r of hepRowsFiltered){
         if(r.status!=='ชดเชย') continue
         const dp=parseDateParts(r.send_date)
-        if(dp){const k=`\${dp.year}/\${dp.month}`;if(!pay[k])pay[k]={comp:0,amount:0};pay[k].comp++;pay[k].amount+=r.compensated}
+        if(dp){const k=`${dp.year}/${dp.month}`;if(!pay[k])pay[k]={comp:0,amount:0};pay[k].comp++;pay[k].amount+=r.compensated}
       }
     }
     const all=[...new Set([...Object.keys(svc),...Object.keys(pay)])].sort()
