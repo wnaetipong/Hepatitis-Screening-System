@@ -940,6 +940,7 @@ export function SeamlessPage({
               </div>}
             </div>
           </>}
+      </>
     </div>
   )
 }
