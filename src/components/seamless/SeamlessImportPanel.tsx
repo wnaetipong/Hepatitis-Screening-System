@@ -3,13 +3,13 @@ import { useState, useCallback, useRef } from 'react'
 import { cn } from '@/lib/utils'
 
 // ── Types ──────────────────────────────────────────────────────────
-interface SummaryRow {
+export interface SummaryRow {
   zone: string; province: string; hsend: string; hospital_name: string
   smt_ref: string; rep_no: string; rep_date: string
   n_claim: number; b_claim: number; n_comp: number; b_comp: number
   n_notcomp: number; fiscal_year: string; source_file: string
 }
-interface SmtRow {
+export interface SmtRow {
   transfer_date: string; batch_no: string; smt_ref: string
   account_code: string; fund: string; fund_sub: string
   amount: number; delayed: number; deducted: number

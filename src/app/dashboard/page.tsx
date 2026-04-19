@@ -11,6 +11,11 @@ import type { PanelTab } from '@/components/modal/SettingsPanel'
 import { SeamlessPage }  from '@/components/seamless/SeamlessPage'
 import { useVillageData, useScreeningData, useConfig } from '@/hooks/useData'
 import type { SlotState, VilSlotState } from '@/types'
+import type { SummaryRow, SmtRow } from '@/components/seamless/SeamlessImportPanel'
+
+// Lite types สำหรับ state ที่ page level
+type SummaryRowLite = Pick<SummaryRow, 'fiscal_year'|'rep_no'|'b_claim'|'b_comp'|'source_file'>
+type SmtRowLite = Pick<SmtRow, 'fiscal_year'|'transferred'|'smt_ref'|'source_file'>
 import { cn } from '@/lib/utils'
 
 const INIT_SLOTS: SlotState[] = [
@@ -35,6 +40,9 @@ export default function DashboardPage() {
   const [panelTab,   setPanelTab]   = useState<PanelTab>('settings')
   const [slots,      setSlots]      = useState<SlotState[]>(INIT_SLOTS)
   const [vilStatus,  setVilStatus]  = useState<Record<string, VilSlotState>>({})
+  // Seamless state — shared ระหว่าง SeamlessPage และ SettingsPanel
+  const [sumRows,    setSumRows]    = useState<SummaryRowLite[]>([])
+  const [smtRows,    setSmtRows]    = useState<SmtRowLite[]>([])
 
   const isLoading = vLoading || sLoading
 
@@ -99,7 +107,13 @@ export default function DashboardPage() {
 
       {activeTab === 'seamless' && (
         // ส่ง onOpenSettings เข้าไปเพื่อให้ SeamlessPage เปิด panel ได้
-        <SeamlessPage onOpenSettings={() => openSettings('import')} />
+        <SeamlessPage
+          onOpenSettings={() => openSettings('seamless')}
+          sharedSumRows={sumRows}
+          sharedSmtRows={smtRows}
+          onSumRowsChange={setSumRows}
+          onSmtRowsChange={setSmtRows}
+        />
       )}
 
       {/* SettingsPanel — ใช้ได้ทุก tab */}
@@ -116,6 +130,18 @@ export default function DashboardPage() {
         setVilStatus={setVilStatus}
         onScreeningImported={reloadScreening}
         onVillageImported={reloadVillage}
+        sumRows={sumRows}
+        smtRows={smtRows}
+        onSumImported={rows => setSumRows(prev => {
+          const ex = new Set(prev.map(r => r.rep_no))
+          return [...prev, ...rows.filter(r => !ex.has(r.rep_no))]
+        })}
+        onSmtImported={rows => setSmtRows(prev => {
+          const ex = new Set(prev.map(r => `${r.smt_ref}|${r.source_file}`))
+          return [...prev, ...rows.filter(r => !ex.has(`${r.smt_ref}|${r.source_file}`))]
+        })}
+        onSumDeleteYear={year => setSumRows(prev => prev.filter(r => r.fiscal_year !== year))}
+        onSmtDeleteYear={year => setSmtRows(prev => prev.filter(r => r.fiscal_year !== year))}
       />
 
       {/* Footer */}

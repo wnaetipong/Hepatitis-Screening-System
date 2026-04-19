@@ -4,9 +4,11 @@ import type { AppConfig, SlotState, VilSlotState } from '@/types'
 import { DEFAULT_CONFIG } from '@/types'
 import { cn } from '@/lib/utils'
 import { useToast } from '../ui/Toast'
+import { SeamlessImportPanel } from '../seamless/SeamlessImportPanel'
+import type { SummaryRow, SmtRow } from '../seamless/SeamlessImportPanel'
 
 // ── Types ──────────────────────────────────────────────────────────
-export type PanelTab = 'settings' | 'import'
+export type PanelTab = 'settings' | 'import' | 'seamless'
 type ImportSubTab = 'csv' | 'vil'
 
 interface Props {
@@ -22,8 +24,14 @@ interface Props {
   setVilStatus: React.Dispatch<React.SetStateAction<Record<string, VilSlotState>>>
   onScreeningImported: () => void
   onVillageImported: () => void
+  // Seamless data (optional — ถ้าไม่ส่งมา tab Seamless จะยังใช้ local state)
+  sumRows?: { fiscal_year: string; rep_no: string; b_claim: number; b_comp: number; source_file: string }[]
+  smtRows?: { fiscal_year: string; transferred: number; smt_ref: string; source_file: string }[]
+  onSumImported?: (rows: SummaryRow[]) => void
+  onSmtImported?: (rows: SmtRow[]) => void
+  onSumDeleteYear?: (year: string) => void
+  onSmtDeleteYear?: (year: string) => void
 }
-
 
 const DEFAULT_VIL_MOOS = ['ม.1', 'ม.2', 'ม.3', 'ม.4', 'ม.9', 'ม.14']
 
@@ -34,6 +42,9 @@ export function SettingsPanel({
   slots, setSlots,
   vilStatus, setVilStatus,
   onScreeningImported, onVillageImported,
+  sumRows = [], smtRows = [],
+  onSumImported, onSmtImported,
+  onSumDeleteYear, onSmtDeleteYear,
 }: Props) {
   const [form, setForm]             = useState<AppConfig>(cfg)
   const [panelTab, setPanelTab]     = useState<PanelTab>(initialTab)
@@ -48,15 +59,12 @@ export function SettingsPanel({
   const logoRef = useRef<HTMLInputElement>(null)
   const { showToast } = useToast()
 
-  // Sync form when cfg changes from outside
   const [prevCfg, setPrevCfg] = useState(cfg)
   if (prevCfg !== cfg) { setPrevCfg(cfg); setForm(cfg) }
 
-  // Sync tab when parent requests a specific tab (e.g. import button clicked)
   const [prevInitTab, setPrevInitTab] = useState(initialTab)
   if (prevInitTab !== initialTab) { setPrevInitTab(initialTab); setPanelTab(initialTab) }
 
-  // โหลดจำนวนกลุ่มเป้าหมายจาก API เมื่อเปิด panel
   const [vilLoaded, setVilLoaded] = useState(false)
   if (open && !vilLoaded) {
     setVilLoaded(true)
@@ -87,7 +95,6 @@ export function SettingsPanel({
     reader.onload = ev => {
       const data = ev.target?.result as string
       set('logoData', data)
-      // บันทึกโลโก้แยก key เพราะ base64 ใหญ่เกิน localStorage limit
       try { localStorage.setItem('hepLogo', data) } catch { /* ignore */ }
     }
     reader.readAsDataURL(file)
@@ -174,7 +181,6 @@ export function SettingsPanel({
 
       if (!raw.length) throw new Error('ไม่พบข้อมูลในไฟล์')
 
-      // Helper: หาค่าจาก key ที่ตรงกับ keyword ใดๆ
       const col = (row: Record<string, unknown>, keys: string[]): string => {
         const rk = Object.keys(row)
         for (const key of keys) {
@@ -184,31 +190,26 @@ export function SettingsPanel({
             if (v instanceof Date) {
               return `${v.getDate()}/${v.getMonth()+1}/${v.getFullYear()}`
             }
-            const s = String(v ?? '').replace(/\t/g, '').trim()
-            return s
+            return String(v ?? '').replace(/\t/g, '').trim()
           }
         }
         return ''
       }
 
-      // Helper: แปลงวันเกิด (Date object, serial, หรือ string)
       const fmtDob = (v: unknown): string => {
         if (!v || v === '') return ''
         if (v instanceof Date) {
-          // วันเกิดใน Excel มักเป็น ค.ศ. → แปลงเป็น พ.ศ.
           const y = v.getFullYear()
           const buddhistYear = y < 2400 ? y + 543 : y
           return `${v.getDate()}/${v.getMonth()+1}/${buddhistYear}`
         }
         if (typeof v === 'number' && v > 10000) {
-          // Excel serial date
           const d = new Date(Math.round((v - 25569) * 86400 * 1000))
           const buddhistYear = d.getUTCFullYear() + 543
           return `${d.getUTCDate()}/${d.getUTCMonth()+1}/${buddhistYear}`
         }
         const s = String(v).replace(/\t/g, '').trim()
         if (!s) return ''
-        // ถ้ามีรูปแบบ D/M/YYYY อยู่แล้ว
         if (/^\d{1,2}\/\d{1,2}\/\d{4}/.test(s)) return s.split(' ')[0]
         try {
           const dt = new Date(s)
@@ -259,7 +260,7 @@ export function SettingsPanel({
       setVilStatus(prev => ({ ...prev, [moo]: { loaded: false, count: 0, err: String(err) } }))
       showToast(`อ่านไฟล์ไม่สำเร็จ: ${String(err)}`, 'err')
     }
-  }, [onVillageImported, showToast])
+  }, [onVillageImported, setVilStatus, showToast])
 
   const handleVil = useCallback((e: React.ChangeEvent<HTMLInputElement>, moo: string) => {
     const file = e.target.files?.[0]
@@ -270,21 +271,26 @@ export function SettingsPanel({
 
   const years = Array.from(new Set(slots.map(s => s.year))).sort()
 
+  // toast wrapper สำหรับ SeamlessImportPanel
+  const showToastSeamless = useCallback((msg: string, ok: boolean) => {
+    showToast(msg, ok ? 'ok' : 'err')
+  }, [showToast])
+
   return (
     <>
-      {/* Backdrop */}
       {open && (
         <div className="fixed inset-0 bg-gray-900/40 backdrop-blur-sm z-[60]" onClick={onClose} />
       )}
 
-      {/* Panel */}
       <div className={cn(
-        'fixed top-0 right-0 h-full w-[460px] max-w-full bg-white shadow-2xl z-[70] flex flex-col',
+        'fixed top-0 right-0 h-full bg-white shadow-2xl z-[70] flex flex-col',
         'transition-transform duration-[350ms] ease-[cubic-bezier(.4,0,.2,1)]',
+        // seamless tab ต้องการพื้นที่กว้างกว่า
+        panelTab === 'seamless' ? 'w-[640px] max-w-full' : 'w-[460px] max-w-full',
         open ? 'translate-x-0' : 'translate-x-full',
       )}>
 
-        {/* ── Header ──────────────────────────────────────────── */}
+        {/* ── Header ── */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 bg-gradient-to-br from-slate-50 to-blue-50 flex-shrink-0">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg bg-blue-100 border border-blue-200 flex items-center justify-center">
@@ -301,11 +307,12 @@ export function SettingsPanel({
           </button>
         </div>
 
-        {/* ── Top-level tabs ───────────────────────────────────── */}
+        {/* ── Top-level tabs ── */}
         <div className="flex flex-shrink-0 border-b border-gray-100">
           {([
-            { key: 'settings', label: '⚙️ ตั้งค่าระบบ' },
-            { key: 'import',   label: '📥 นำเข้าข้อมูล' },
+            { key: 'settings',  label: '⚙️ ตั้งค่าระบบ' },
+            { key: 'import',    label: '📥 นำเข้าข้อมูล' },
+            { key: 'seamless',  label: '📋 Seamless DMIS' },
           ] as { key: PanelTab; label: string }[]).map(({ key, label }) => (
             <button key={key} onClick={() => setPanelTab(key)}
               className={cn(
@@ -319,14 +326,12 @@ export function SettingsPanel({
           ))}
         </div>
 
-        {/* ── Scrollable body ──────────────────────────────────── */}
+        {/* ── Scrollable body ── */}
         <div className="flex-1 overflow-y-auto">
 
-          {/* ════ Settings tab ════════════════════════════════════ */}
+          {/* ════ Settings tab ════ */}
           {panelTab === 'settings' && (
             <div className="px-6 py-5 space-y-6">
-
-              {/* Org info */}
               <Section title="ข้อมูลองค์กร" color="bg-blue-500">
                 <div className="flex items-center gap-4 mb-4">
                   <div
@@ -371,17 +376,14 @@ export function SettingsPanel({
                 />
               </Section>
 
-              {/* HBsAg color */}
               <Section title="สีกราฟ HBsAg (ไวรัสตับอักเสบ บี)" color="bg-emerald-500">
                 <ColorPicker value={form.hbColor} onChange={c => set('hbColor', c)} />
               </Section>
 
-              {/* Anti-HCV color */}
               <Section title="สีกราฟ Anti-HCV (ไวรัสตับอักเสบ ซี)" color="bg-amber-500">
                 <ColorPicker value={form.hcvColor} onChange={c => set('hcvColor', c)} />
               </Section>
 
-              {/* Display toggles */}
               <Section title="การแสดงผล" color="bg-violet-500">
                 <div className="space-y-3">
                   <Toggle label="แสดงกราฟภาพรวม"         desc="กราฟแท่งเปรียบเทียบรายหมู่บ้าน"    value={form.showChart}     onChange={v => set('showChart', v)} />
@@ -390,7 +392,6 @@ export function SettingsPanel({
                 </div>
               </Section>
 
-              {/* Column toggles */}
               <Section title="คอลัมน์ในตาราง" color="bg-indigo-500">
                 <div className="space-y-3">
                   <Toggle label="ลำดับ"              desc="คอลัมน์ลำดับที่"                  value={form.showNo}      onChange={v => set('showNo', v)} />
@@ -414,11 +415,9 @@ export function SettingsPanel({
             </div>
           )}
 
-          {/* ════ Import tab ══════════════════════════════════════ */}
+          {/* ════ Import tab ════ */}
           {panelTab === 'import' && (
             <div className="px-6 py-5 space-y-5">
-
-              {/* Sub-tabs */}
               <div className="flex gap-1 p-1 bg-gray-100 rounded-[10px]">
                 {(['csv', 'vil'] as const).map(t => (
                   <button key={t} onClick={() => setImportTab(t)}
@@ -431,7 +430,6 @@ export function SettingsPanel({
                 ))}
               </div>
 
-              {/* ── CSV sub-panel ─────────────────────────────── */}
               {importTab === 'csv' && (
                 <div className="space-y-5">
                   {years.map(yr => (
@@ -512,7 +510,6 @@ export function SettingsPanel({
                 </div>
               )}
 
-              {/* ── Village sub-panel ──────────────────────────── */}
               {importTab === 'vil' && (
                 <div className="space-y-4">
                   <div className="grid grid-cols-3 gap-2.5">
@@ -594,9 +591,24 @@ export function SettingsPanel({
               )}
             </div>
           )}
+
+          {/* ════ Seamless tab ════ */}
+          {panelTab === 'seamless' && (
+            <div className="px-6 py-5">
+              <SeamlessImportPanel
+                sumRows={sumRows}
+                smtRows={smtRows}
+                onSumImported={onSumImported ?? (() => {})}
+                onSmtImported={onSmtImported ?? (() => {})}
+                onSumDeleteYear={onSumDeleteYear ?? (() => {})}
+                onSmtDeleteYear={onSmtDeleteYear ?? (() => {})}
+                showToast={showToastSeamless}
+              />
+            </div>
+          )}
         </div>
 
-        {/* ── Footer (settings tab only) ───────────────────────── */}
+        {/* ── Footer (settings tab only) ── */}
         {panelTab === 'settings' && (
           <div className="flex items-center gap-2 px-6 py-4 border-t border-gray-100 bg-gray-50/60 flex-shrink-0">
             <button onClick={handleReset}
@@ -621,33 +633,21 @@ export function SettingsPanel({
 // ── Color Picker ───────────────────────────────────────────────────
 function ColorPicker({ value, onChange }: { value: string; onChange: (c: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null)
-
   return (
     <div className="flex items-center gap-2.5">
       <div
         className="w-10 h-10 rounded-xl border-2 border-gray-200 cursor-pointer hover:border-blue-400 transition-all shadow-sm flex-shrink-0"
         style={{ background: value }}
         onClick={() => inputRef.current?.click()}
-        title="คลิกเพื่อเลือกสี"
       />
-      <input
-        ref={inputRef}
-        type="color"
-        value={value}
-        onChange={e => onChange(e.target.value)}
-        className="sr-only"
-      />
+      <input ref={inputRef} type="color" value={value} onChange={e => onChange(e.target.value)} className="sr-only" />
       <input
         className="flex-1 px-2.5 py-2 text-[12.5px] font-mono border border-gray-200 rounded-lg outline-none focus:border-blue-400 uppercase tracking-wider"
         value={value}
-        onChange={e => {
-          const v = e.target.value
-          if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v)
-        }}
+        onChange={e => { const v = e.target.value; if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v) }}
         maxLength={7}
       />
-      <button
-        onClick={() => inputRef.current?.click()}
+      <button onClick={() => inputRef.current?.click()}
         className="px-3 py-2 text-[11.5px] font-semibold border border-gray-200 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-all whitespace-nowrap flex items-center gap-1.5">
         <span>🎨</span><span>เลือกสี</span>
       </button>
@@ -655,7 +655,6 @@ function ColorPicker({ value, onChange }: { value: string; onChange: (c: string)
   )
 }
 
-// ── Helpers ────────────────────────────────────────────────────────
 function Section({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
   return (
     <div>
@@ -681,16 +680,9 @@ function Toggle({ label, desc, value, onChange }: {
         <div className="text-[12.5px] font-semibold text-gray-800">{label}</div>
         <div className="text-[11px] text-gray-400">{desc}</div>
       </div>
-      <button
-        onClick={() => onChange(!value)}
-        className={cn(
-          'relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0',
-          value ? 'bg-blue-600' : 'bg-gray-200',
-        )}>
-        <span className={cn(
-          'absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200',
-          value ? 'translate-x-[22px]' : 'translate-x-0.5',
-        )} />
+      <button onClick={() => onChange(!value)}
+        className={cn('relative w-11 h-6 rounded-full transition-colors duration-200 flex-shrink-0', value ? 'bg-blue-600' : 'bg-gray-200')}>
+        <span className={cn('absolute top-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200', value ? 'translate-x-[22px]' : 'translate-x-0.5')} />
       </button>
     </div>
   )

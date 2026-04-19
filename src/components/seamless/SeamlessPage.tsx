@@ -415,14 +415,41 @@ function UploadZone({ label, hint, accept, onFiles, loading, progress }: { label
 }
 
 // ── Main ───────────────────────────────────────────────────────────
-export function SeamlessPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
+export function SeamlessPage({
+  onOpenSettings,
+  sharedSumRows,
+  sharedSmtRows,
+  onSumRowsChange,
+  onSmtRowsChange,
+}: {
+  onOpenSettings?: () => void
+  sharedSumRows?: { fiscal_year: string; rep_no: string; b_claim: number; b_comp: number; source_file: string }[]
+  sharedSmtRows?: { fiscal_year: string; transferred: number; smt_ref: string; source_file: string }[]
+  onSumRowsChange?: (rows: any[]) => void
+  onSmtRowsChange?: (rows: any[]) => void
+}) {
   // sub-tab
   const [subTab, setSubTab] = useState<'individual'|'summary'|'smt'>('individual')
 
   // data
   const [indRows,  setIndRows]  = useState<IndividualRow[]>([])
-  const [sumRows,  setSumRows]  = useState<SummaryRow[]>([])
-  const [smtRows,  setSmtRows]  = useState<SmtRow[]>([])
+  const [_sumRows, _setSumRows] = useState<SummaryRow[]>([])
+  const [_smtRows, _setSmtRows] = useState<SmtRow[]>([])
+  // ถ้ามี shared state จาก page ให้ใช้ shared แทน local
+  const sumRows = (sharedSumRows as SummaryRow[] | undefined) ?? _sumRows
+  const smtRows = (sharedSmtRows as SmtRow[] | undefined) ?? _smtRows
+  const setSumRows = onSumRowsChange
+    ? (updater: SummaryRow[] | ((prev: SummaryRow[]) => SummaryRow[])) => {
+        const next = typeof updater === 'function' ? updater(sumRows) : updater
+        onSumRowsChange(next)
+      }
+    : _setSumRows
+  const setSmtRows = onSmtRowsChange
+    ? (updater: SmtRow[] | ((prev: SmtRow[]) => SmtRow[])) => {
+        const next = typeof updater === 'function' ? updater(smtRows) : updater
+        onSmtRowsChange(next)
+      }
+    : _setSmtRows
   const [dbLoading,setDbLoading]= useState(true)
 
   // importing states
