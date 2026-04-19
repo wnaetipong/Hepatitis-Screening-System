@@ -1,5 +1,5 @@
 'use client'
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Topbar }        from '@/components/ui/Topbar'
 import { ToastProvider } from '@/components/ui/Toast'
 import { LoadingOverlay } from '@/components/ui/Loading'
@@ -43,6 +43,17 @@ export default function DashboardPage() {
   // Seamless state — shared ระหว่าง SeamlessPage และ SettingsPanel
   const [sumRows,    setSumRows]    = useState<SummaryRowLite[]>([])
   const [smtRows,    setSmtRows]    = useState<SmtRowLite[]>([])
+
+  // โหลด sumRows/smtRows ตั้งแต่ mount เพื่อให้ SettingsPanel แสดงข้อมูลได้แม้ยังไม่เข้า Seamless tab
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/rep-summary').then(r => r.json()),
+      fetch('/api/smt').then(r => r.json()),
+    ]).then(([sum, smt]) => {
+      if (sum.ok && sum.data?.length) setSumRows(sum.data)
+      if (smt.ok && smt.data?.length) setSmtRows(smt.data)
+    }).catch(() => {})
+  }, [])
 
   const isLoading = vLoading || sLoading
 
