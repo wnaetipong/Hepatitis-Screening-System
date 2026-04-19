@@ -311,7 +311,7 @@ function DonutChart({ slices, size=120 }: { slices: { label: string; value: numb
   )
 }
 
-function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; c:number; comp:number; notComp:number; amount:number }[]; hasSmt?: boolean }) {
+function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; c:number; comp:number; notComp:number; pending:number; amount:number }[]; hasSmt?: boolean }) {
   const [hov, setHov] = useState<number|null>(null)
   if (!data.length) return <div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>
   const W=1000, H=230, PAD={t:36,b:56,l:52,r:72}
@@ -351,7 +351,7 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
             onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
         ))}
         {data.length>0&&<g><rect x={PAD.l+2} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={PAD.l+21} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {data[0].label.split('/')[0]}</text></g>}
-        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=158,th=118,tx=Math.max(PAD.l+4,Math.min(cx-tw/2,W-tw-4)),ty=Math.max(4,PAD.t-th-8),mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี (คัดกรอง): <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี (คัดกรอง): <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><text x={tx+10} y={ty+75} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+89} fontSize="9.5" fill="#6b7280">ไม่ชดเชย: <tspan fontWeight="700" fill="#ef4444">{d.notComp.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+96} x2={tx+tw-10} y2={ty+96} stroke="#f3f4f6" strokeWidth="1"/>{d.amount>0&&<text x={tx+10} y={ty+109} fontSize="9" fill="#059669" fontWeight="600">฿{d.amount.toLocaleString()} (SMT)</text>}</g>)})()}
+        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=168,th=134,tx=Math.max(PAD.l+4,Math.min(cx-tw/2,W-tw-4)),ty=Math.max(4,PAD.t-th-8),mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี (คัดกรอง): <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี (คัดกรอง): <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><text x={tx+10} y={ty+75} fontSize="9.5" fill="#6b7280">✓ ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+89} fontSize="9.5" fill="#6b7280">✕ ไม่ชดเชย: <tspan fontWeight="700" fill="#ef4444">{d.notComp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+103} fontSize="9.5" fill="#6b7280">⏳ รอประมวลผล: <tspan fontWeight="700" fill="#f59e0b">{d.pending.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+110} x2={tx+tw-10} y2={ty+110} stroke="#f3f4f6" strokeWidth="1"/>{d.amount>0&&<text x={tx+10} y={ty+124} fontSize="9" fill="#059669" fontWeight="600">฿{d.amount.toLocaleString()} (SMT)</text>}</g>)})()}
         <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี (คัดกรอง)</text><rect x="130" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="144" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี (คัดกรอง)</text>{hasSmt&&<><line x1="270" y1="6" x2="284" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="277" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="288" y="10" fontSize="10" fill="#4b5563">ยอดโอน SMT (฿)</text></>}</g>
       </svg>
     </div>
@@ -730,26 +730,51 @@ export function SeamlessPage({
   },[hepRowsFiltered])
 
   const monthlyData = useMemo(()=>{
-    // Bar: นับจาก screeningDB.date (ตาราง screenings)
+    // สร้าง lookup pid → status ใน seamless (ใช้ hepRows ไม่ filtered เพื่อ cross-ref ทุก record)
+    const pidStatusB:Record<string,string>={}, pidStatusC:Record<string,string>={}
+    for(const r of hepRows){
+      if(isHepB(r.service_name)){
+        if(r.status==='ชดเชย'||!pidStatusB[r.pid]) pidStatusB[r.pid]=r.status
+      } else {
+        if(r.status==='ชดเชย'||!pidStatusC[r.pid]) pidStatusC[r.pid]=r.status
+      }
+    }
+    // Bar + comp/notComp/pending: จาก screeningDB filtered ตาม filterYear/filterMonth
     const svc:Record<string,{b:number;c:number}>={}
+    const compMap:Record<string,{comp:number;notComp:number;pending:number}>={}
     if(screeningDB){
       for(const byPid of Object.values(screeningDB.HBsAg)){
-        for(const {dates} of Object.values(byPid)){
-          for(const d of dates){const ds=parseDateParts(d);if(!ds)continue;const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};svc[k].b++}
+        for(const [pid,{dates}] of Object.entries(byPid)){
+          for(const d of dates){
+            const ds=parseDateParts(d);if(!ds)continue
+            if(filterYear!=='all'&&ds.year!==filterYear)continue
+            if(filterMonth!=='all'&&ds.month!==filterMonth)continue
+            const k=`${ds.year}/${ds.month}`
+            if(!svc[k])svc[k]={b:0,c:0};svc[k].b++
+            if(!compMap[k])compMap[k]={comp:0,notComp:0,pending:0}
+            const st=pidStatusB[pid]
+            if(st==='ชดเชย')compMap[k].comp++
+            else if(st==='ไม่ชดเชย')compMap[k].notComp++
+            else compMap[k].pending++
+          }
         }
       }
       for(const byPid of Object.values(screeningDB.AntiHCV)){
-        for(const {dates} of Object.values(byPid)){
-          for(const d of dates){const ds=parseDateParts(d);if(!ds)continue;const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};svc[k].c++}
+        for(const [pid,{dates}] of Object.entries(byPid)){
+          for(const d of dates){
+            const ds=parseDateParts(d);if(!ds)continue
+            if(filterYear!=='all'&&ds.year!==filterYear)continue
+            if(filterMonth!=='all'&&ds.month!==filterMonth)continue
+            const k=`${ds.year}/${ds.month}`
+            if(!svc[k])svc[k]={b:0,c:0};svc[k].c++
+            if(!compMap[k])compMap[k]={comp:0,notComp:0,pending:0}
+            const st=pidStatusC[pid]
+            if(st==='ชดเชย')compMap[k].comp++
+            else if(st==='ไม่ชดเชย')compMap[k].notComp++
+            else compMap[k].pending++
+          }
         }
       }
-    }
-    // Comp/NotComp: จาก seamless_records โดยใช้ service_date
-    const compMap:Record<string,{comp:number;notComp:number}>={}
-    for(const r of hepRowsFiltered){
-      const ds=parseDateParts(r.service_date);if(!ds)continue
-      const k=`${ds.year}/${ds.month}`;if(!compMap[k])compMap[k]={comp:0,notComp:0}
-      if(r.status==='ชดเชย')compMap[k].comp++;else compMap[k].notComp++
     }
     // เส้น: ยอดโอนจริงจาก smt_records โดยใช้ transfer_date
     const pay:Record<string,{amount:number}>={}
@@ -758,9 +783,9 @@ export function SeamlessPage({
       const ds=parseDateParts(s.transfer_date);if(!ds)continue
       const k=`${ds.year}/${ds.month}`;if(!pay[k])pay[k]={amount:0};pay[k].amount+=s.transferred
     }
-    const all=[...new Set([...Object.keys(svc),...Object.keys(compMap),...Object.keys(pay)])].sort()
-    return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:compMap[label]?.comp??0,notComp:compMap[label]?.notComp??0,amount:pay[label]?.amount??0}))
-  },[screeningDB, hepRowsFiltered, smtRows])
+    const all=[...new Set([...Object.keys(svc),...Object.keys(pay)])].sort()
+    return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:compMap[label]?.comp??0,notComp:compMap[label]?.notComp??0,pending:compMap[label]?.pending??0,amount:pay[label]?.amount??0}))
+  },[screeningDB, hepRows, filterYear, filterMonth, smtRows])
 
   const filtered = useMemo(()=>{
     let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
