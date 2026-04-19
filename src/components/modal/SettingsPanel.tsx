@@ -286,7 +286,7 @@ export function SettingsPanel({
         'fixed top-0 right-0 h-full bg-white shadow-2xl z-[70] flex flex-col',
         'transition-transform duration-[350ms] ease-[cubic-bezier(.4,0,.2,1)]',
         // seamless tab ต้องการพื้นที่กว้างกว่า
-        panelTab === 'seamless' ? 'w-[640px] max-w-full' : 'w-[460px] max-w-full',
+        'w-[460px] max-w-full',
         open ? 'translate-x-0' : 'translate-x-full',
       )}>
 

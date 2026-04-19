@@ -304,12 +304,12 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
           <clipPath id="cc"><rect x={PAD.l} y={PAD.t} width={chartW} height={chartH}/></clipPath>
         </defs>
         <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} fill="#f9fafb" rx="6"/>
-        {Array.from({length:5},(_,i)=>{const pct=i/4,y=PAD.t+chartH*(1-pct);return(<g key={i}><line x1={PAD.l} y1={y} x2={PAD.l+chartW} y2={y} stroke={i===0?'#d1d5db':'#e5e7eb'} strokeWidth={i===0?1.5:1} strokeDasharray={i>0?'4,3':undefined}/><text x={PAD.l-8} y={y+4} textAnchor="end" fontSize="10" fill="#9ca3af">{fmtK(Math.round(niceL*pct))}</text><text x={PAD.l+chartW+8} y={y+4} textAnchor="start" fontSize="10" fill="#6ee7b7">{fmtK(Math.round(niceR*pct))}</text></g>)})}
+        {Array.from({length:5},(_,i)=>{const pct=i/4,y=PAD.t+chartH*(1-pct);return(<g key={i}><line x1={PAD.l} y1={y} x2={PAD.l+chartW} y2={y} stroke={i===0?'#d1d5db':'#e5e7eb'} strokeWidth={i===0?1.5:1} strokeDasharray={i>0?'4,3':undefined}/><text x={PAD.l-8} y={y+4} textAnchor="end" fontSize="10" fill="#9ca3af">{fmtK(Math.round(niceL*pct))}</text>{hasSmt&&<text x={PAD.l+chartW+8} y={y+4} textAnchor="start" fontSize="10" fill="#6ee7b7">{fmtK(Math.round(niceR*pct))}</text>}</g>)})}
         {data.map((d,i)=>{if(i===0)return null;const pY=data[i-1].label.split('/')[0],tY=d.label.split('/')[0];if(pY===tY)return null;const x=PAD.l+slotW*i;return(<g key={`yr-${i}`}><line x1={x} y1={PAD.t} x2={x} y2={PAD.t+chartH} stroke="#9ca3af" strokeWidth="1" strokeDasharray="5,3"/><rect x={x+3} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={x+22} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {tY}</text></g>)})}
         <g clipPath="url(#cc)">{data.map((d,i)=>{const cx=PAD.l+slotW*i+slotW/2,hB=Math.max(0,(d.b/niceL)*chartH),hC=Math.max(0,(d.c/niceL)*chartH),isH=hov===i;return(<g key={d.label} opacity={hov!==null&&!isH?0.35:1} style={{transition:'opacity .15s'}} onMouseEnter={()=>setHov(i)}>{isH&&<rect x={PAD.l+slotW*i} y={PAD.t} width={slotW} height={chartH} fill="#eff6ff" opacity="0.7"/>}<rect x={cx-bw-1.5} y={PAD.t+chartH-hB} width={bw} height={hB} fill="url(#gb)" rx="3" filter="url(#ds)"/><rect x={cx+1.5} y={PAD.t+chartH-hC} width={bw} height={hC} fill="url(#gc)" rx="3" filter="url(#ds)"/></g>)})}</g>
-        <polygon points={areaPoints} fill="url(#ga)" clipPath="url(#cc)"/>
+        {hasSmt&&<><polygon points={areaPoints} fill="url(#ga)" clipPath="url(#cc)"/>
         <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" clipPath="url(#cc)"/>
-        {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.comp/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.comp>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}
+        {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.comp/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.comp>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}</>}
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,mm=parseInt(d.label.split('/')[1]),yy=d.label.split('/')[0].slice(2),isH=hov===i;return(<g key={`lbl-${i}`}><text x={x} y={PAD.t+chartH+16} textAnchor="middle" fontSize="10.5" fill={isH?'#2563eb':'#6b7280'} fontWeight={isH?'700':'400'}>{MONTH_TH[mm]}</text><text x={x} y={PAD.t+chartH+29} textAnchor="middle" fontSize="9" fill="#c9d1d9">{yy}</text></g>)})}
         {/* Invisible hover rects ครอบทุก slot เพื่อ capture mouse events */}
         {data.map((_d,i)=>(
@@ -318,44 +318,48 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
             onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
         ))}
         {data.length>0&&<g><rect x={PAD.l+2} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={PAD.l+21} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {data[0].label.split('/')[0]}</text></g>}
-        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=148,th=102,tx=Math.max(PAD.l,Math.min(cx-tw/2,W-PAD.r-tw)),ty=PAD.t-th-12,mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี: <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี: <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><circle cx={tx+14} cy={ty+73} r="4" fill="none" stroke="#10b981" strokeWidth="2"/><text x={tx+22} y={ty+77} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+92} fontSize="9" fill="#9ca3af">รวม {(d.b+d.c).toLocaleString()} รายการ</text>{d.amount>0&&<text x={tx+tw-10} y={ty+92} textAnchor="end" fontSize="9" fill="#6ee7b7">฿{d.amount.toLocaleString()}</text>}</g>)})()}
-        <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text><rect x="82" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="96" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text><line x1="172" y1="6" x2="186" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="179" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="190" y="10" fontSize="10" fill="#4b5563">เงินโอนเข้าบัญชี</text><text x="190" y="21" fontSize="9" fill={hasSmt?'#059669':'#9ca3af'}>{hasSmt?'อิงจาก SMT (วันโอนจริง)':'อิงจาก send_date (ยังไม่มี SMT)'}</text></g>
+        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=148,th=102,tx=Math.max(PAD.l+4,Math.min(cx-tw/2,W-tw-4)),ty=Math.max(4,PAD.t-th-8),mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี: <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี: <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><circle cx={tx+14} cy={ty+73} r="4" fill="none" stroke="#10b981" strokeWidth="2"/><text x={tx+22} y={ty+77} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+92} fontSize="9" fill="#9ca3af">รวม {(d.b+d.c).toLocaleString()} รายการ</text>{d.amount>0&&<text x={tx+tw-10} y={ty+92} textAnchor="end" fontSize="9" fill="#6ee7b7">฿{d.amount.toLocaleString()}</text>}</g>)})()}
+        <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text><rect x="82" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="96" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text>{hasSmt&&<><line x1="172" y1="6" x2="186" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="179" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="190" y="10" fontSize="10" fill="#4b5563">เงินโอนเข้าบัญชี (วันโอนจริง SMT)</text></>}</g>
       </svg>
     </div>
   )
 }
 
-// ── Compare Bar Chart (บี vs ซี) ─────────────────────────────────
+// ── Compare Bar Chart ────────────────────────────────────────────
 function CompareBarChart({ items }: {
   items: { label: string; total: number; comp: number; unique: number; color: string }[]
 }) {
-  const maxTotal = Math.max(...items.map(d => d.total), 1)
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       {items.map((item, i) => {
         const pct = item.total > 0 ? (item.comp / item.total * 100) : 0
-        const barW = (item.total / maxTotal * 100)
+        const notComp = item.total - item.comp
         return (
-          <div key={i}>
-            <div className="flex items-center justify-between mb-1.5">
-              <span className="text-[12.5px] font-semibold text-gray-800">{item.label}</span>
-              <span className="text-[11px] text-gray-400">{fmtNum(item.unique)} ราย</span>
+          <div key={i} className="space-y-1.5">
+            {/* label row */}
+            <div className="flex items-center justify-between">
+              <span className="text-[12px] font-bold text-gray-800">{item.label}</span>
+              <span className="text-[11px] text-gray-400">{fmtNum(item.unique)} คน · {fmtNum(item.total)} รายการ</span>
             </div>
-            {/* bar รายการทั้งหมด */}
-            <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden mb-1">
-              <div className="absolute inset-y-0 left-0 rounded-lg transition-all duration-700"
-                style={{width:`${barW}%`, background:item.color, opacity:0.15}}/>
-              <div className="absolute inset-y-0 left-0 rounded-lg transition-all duration-700"
-                style={{width:`${barW * pct / 100}%`, background:item.color}}/>
-              <div className="absolute inset-0 flex items-center px-3 justify-between">
-                <span className="text-[11.5px] font-bold" style={{color: pct > 30 ? 'white' : item.color}}>
-                  {fmtNum(item.comp)} ชดเชย
-                </span>
-                <span className="text-[11px] text-gray-500">{fmtNum(item.total)} รายการ</span>
+            {/* stacked bar */}
+            <div className="h-7 rounded-lg overflow-hidden flex bg-gray-100">
+              <div className="h-full flex items-center justify-end pr-2 transition-all duration-700 min-w-0"
+                style={{width:`${pct}%`, background:item.color}}>
+                {pct > 25 && <span className="text-[10.5px] font-bold text-white whitespace-nowrap">{fmtNum(item.comp)} ชดเชย</span>}
               </div>
+              {notComp > 0 && (
+                <div className="h-full flex items-center justify-start pl-2 transition-all duration-700 min-w-0"
+                  style={{width:`${100-pct}%`, background:'#fee2e2'}}>
+                  {100-pct > 12 && <span className="text-[10.5px] font-bold text-red-500 whitespace-nowrap">{fmtNum(notComp)}</span>}
+                </div>
+              )}
             </div>
+            {/* pct row */}
             <div className="flex items-center justify-between text-[11px]">
-              <span className="text-gray-400">อัตราชดเชย</span>
+              <div className="flex items-center gap-3">
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{background:item.color}}/><span className="text-gray-500">ชดเชย {pct.toFixed(1)}%</span></span>
+                {notComp > 0 && <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-200"/><span className="text-gray-400">ไม่ชดเชย {(100-pct).toFixed(1)}%</span></span>}
+              </div>
               <span className="font-bold" style={{color:item.color}}>{pct.toFixed(1)}%</span>
             </div>
           </div>
@@ -723,13 +727,7 @@ export function SeamlessPage({
         if(!pay[k])pay[k]={comp:0,amount:0}
         pay[k].comp++;pay[k].amount+=r.compensated
       }
-    } else {
-      // fallback: ใช้ send_date
-      for(const r of hepRowsFiltered){
-        if(r.status!=='ชดเชย') continue
-        const dp=parseDateParts(r.send_date)
-        if(dp){const k=`${dp.year}/${dp.month}`;if(!pay[k])pay[k]={comp:0,amount:0};pay[k].comp++;pay[k].amount+=r.compensated}
-      }
+    // ถ้าไม่มี SMT → pay ว่าง → เส้นชดเชยจะไม่แสดง
     }
     const all=[...new Set([...Object.keys(svc),...Object.keys(pay)])].sort()
     return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:pay[label]?.comp??0,amount:pay[label]?.amount??0}))
@@ -795,23 +793,7 @@ export function SeamlessPage({
       {/* ── TAB: INDIVIDUAL ── */}
       {subTab==='individual'&&(
         <>
-          {/* Info bar + ปุ่มเปิด Settings */}
-          <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 mb-5 shadow-sm flex items-center gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-blue-500"/>
-                <span className="font-bold text-gray-900 text-[13px]">REP Individual</span>
-                <span className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-full text-[10.5px] text-blue-600 font-semibold">{fmtNum(indRows.length)} รายการ</span>
-                {hepRows.length > 0 && <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full text-[10.5px] text-emerald-600 font-semibold">ตับอักเสบ {fmtNum(hepRows.length)} รายการ</span>}
-              </div>
-              <div className="flex flex-wrap gap-1.5">{filterOptions.sources.map((f,i)=><span key={i} className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-[10.5px] text-gray-500">📄 {f}</span>)}</div>
-            </div>
-            <button type="button" onClick={()=>onOpenSettings?.()}
-              className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-sm">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/></svg>
-              นำเข้าข้อมูล
-            </button>
-          </div>
+
 
           {indRows.length>0&&<>
             {/* Filter bar */}
@@ -826,10 +808,19 @@ export function SeamlessPage({
                   <option value="all">ทุกเดือน</option>
                   {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={String(m).padStart(2,'0')}>{MONTH_TH[m]}</option>)}
                 </select>
-                <select value="" onChange={e=>{if(!e.target.value)return;setFHsend(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-                  <option value="">HSEND{filterHsend.length>0?` ✓${filterHsend.length}`:''}</option>
-                  {filterOptions.hsends.map(h=><option key={h} value={h}>{filterHsend.includes(h)?'✓ ':''}{h}</option>)}
-                </select>
+                {/* HSEND inline checkboxes */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-[11px] text-gray-400 font-semibold">HSEND:</span>
+                  {filterOptions.hsends.map(h=>(
+                    <button key={h} type="button"
+                      onClick={()=>{setFHsend(p=>p.includes(h)?p.filter(v=>v!==h):[...p,h]);setPage(1)}}
+                      className={cn('px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all',
+                        filterHsend.includes(h)?'bg-blue-600 border-blue-600 text-white':'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
+                      {h}
+                    </button>
+                  ))}
+                  {filterHsend.length>0&&<button type="button" onClick={()=>{setFHsend([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
+                </div>
                 <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
                   <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
                   {filterOptions.rights.map(r=><option key={r} value={r}>{filterRights.includes(r)?'✓ ':''}{RIGHTS_LABEL[r]??r}</option>)}
@@ -839,7 +830,7 @@ export function SeamlessPage({
               {hasFilter&&<div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
                 {filterYear!=='all'&&<Chip label={`ปี ${filterYear}`} onRemove={()=>{setFYear('all');setPage(1)}} color="purple"/>}
                 {filterMonth!=='all'&&<Chip label={`เดือน ${MONTH_TH[parseInt(filterMonth)]}`} onRemove={()=>{setFMonth('all');setPage(1)}} color="purple"/>}
-                {filterHsend.map(h=><Chip key={h} label={`HSEND: ${h}`} onRemove={()=>{setFHsend(p=>p.filter(v=>v!==h));setPage(1)}} color="blue"/>)}
+{/* HSEND handled via inline buttons above */}
                 {filterRights.map(r=><Chip key={r} label={RIGHTS_LABEL[r]??r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
               </div>}
             </div>
@@ -938,7 +929,7 @@ export function SeamlessPage({
                         <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{isHepB(r.service_name)?'🟦':'🔵'}<span className="truncate max-w-[180px]">{r.service_name}</span></span></td>
                         <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.total_claim>0?fmtBaht(r.total_claim):'—'}</td>
                         <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold"><span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span></td>
-                        <td className="px-3 py-2.5 text-center"><span className={cn('px-2.5 py-1 rounded-full text-[10.5px] font-bold',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
+                        <td className="px-3 py-2.5 text-center"><span className={cn('inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
                         <td className="px-3 py-2.5 text-center">
                           {sumRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:tr?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}
                         </td>
@@ -964,24 +955,7 @@ export function SeamlessPage({
       {/* ── TAB: REP SUMMARY ── */}
       {subTab==='summary'&&(
         <div className="space-y-5">
-          {/* Summary info bar */}
-          <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex items-center gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-purple-500"/>
-                <span className="font-bold text-gray-900 text-[13px]">REP Summary</span>
-                <span className="px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-[10.5px] text-purple-600 font-semibold">{fmtNum(sumRows.length)} batch</span>
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {SUM_YEARS.map(yr=>{const n=sumRows.filter(r=>r.fiscal_year===yr).length;return n>0?<span key={yr} className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-[10.5px] text-gray-500">ปี {yr}: {n} batch</span>:null})}
-              </div>
-            </div>
-            <button type="button" onClick={()=>onOpenSettings?.()}
-              className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all shadow-sm">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/></svg>
-              นำเข้าข้อมูล
-            </button>
-          </div>
+
 
           {sumRows.length===0?(
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
@@ -1032,25 +1006,7 @@ export function SeamlessPage({
       {/* ── TAB: SMT ── */}
       {subTab==='smt'&&(
         <div className="space-y-5">
-          {/* SMT info bar */}
-          <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex items-center gap-4">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="w-2 h-2 rounded-full bg-teal-500"/>
-                <span className="font-bold text-gray-900 text-[13px]">Smart Money Transfer (DKTP)</span>
-                <span className="px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-[10.5px] text-teal-600 font-semibold">{fmtNum(smtRows.length)} รายการ</span>
-                {smtRows.length>0&&<span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full text-[10.5px] text-emerald-600 font-semibold">฿{fmtBaht(smtRows.reduce((a,b)=>a+b.transferred,0))}</span>}
-              </div>
-              <div className="flex flex-wrap gap-1.5">
-                {SMT_YEARS.map(yr=>{const n=smtRows.filter(r=>r.fiscal_year===yr).length;return n>0?<span key={yr} className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-[10.5px] text-gray-500">ปี {yr}: {n} รายการ</span>:null})}
-              </div>
-            </div>
-            <button type="button" onClick={()=>onOpenSettings?.()}
-              className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all shadow-sm">
-              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/></svg>
-              นำเข้าข้อมูล
-            </button>
-          </div>
+
 
           {smtRows.length===0?(
             <div className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
