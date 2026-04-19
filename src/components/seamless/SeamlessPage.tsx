@@ -76,6 +76,22 @@ function cv(row: any[], i: number): string {
 function nv(row: any[], i: number): number {
   const v = parseFloat(String(row[i] ?? '')); return isNaN(v) ? 0 : v
 }
+// แปลง Excel serial number → DD/MM/YYYY (ปีพุทธศักราช)
+function excelSerialToThaiDate(serial: number): string {
+  const ms = (serial - 25569) * 86400 * 1000
+  const date = new Date(ms)
+  const d = date.getUTCDate().toString().padStart(2, '0')
+  const m = (date.getUTCMonth() + 1).toString().padStart(2, '0')
+  const y = (date.getUTCFullYear() + 543).toString()
+  return `${d}/${m}/${y}`
+}
+// อ่าน cell วันที่: ถ้าเป็น number (Excel serial) แปลงเป็น DD/MM/YYYY ก่อน
+function cdv(row: any[], i: number): string {
+  const v = row[i]
+  if (typeof v === 'number' && v > 1000) return excelSerialToThaiDate(v)
+  if (v === null || v === undefined || v === '') return ''
+  return String(v).trim()
+}
 
 async function parseIndividual(file: File): Promise<{ rows: IndividualRow[]; error?: string }> {
   try {
@@ -90,7 +106,7 @@ async function parseIndividual(file: File): Promise<{ rows: IndividualRow[]; err
     for (let i = dataStart; i < raw.length; i++) {
       const row = raw[i]; const repNo = cv(row, 1), transId = cv(row, 2)
       if (!repNo || !transId) continue
-      rows.push({ seq: cv(row,0), rep_no: repNo, trans_id: transId, hn: cv(row,3), pid: cv(row,5), name: cv(row,6), rights: cv(row,7), hmain: cv(row,8), send_date: cv(row,9), service_date: cv(row,10), item_seq: cv(row,11), service_name: cv(row,12), qty: nv(row,13), price: nv(row,14), ceiling: nv(row,15), total_claim: nv(row,16), ps_code: cv(row,17), ps_pct: nv(row,18), compensated: nv(row,19), not_comp: nv(row,20), extra: nv(row,21), recall: nv(row,22), status: cv(row,23), note: cv(row,24), note_other: cv(row,25), hsend: cv(row,26), source_file: file.name })
+      rows.push({ seq: cv(row,0), rep_no: repNo, trans_id: transId, hn: cv(row,3), pid: cv(row,5), name: cv(row,6), rights: cv(row,7), hmain: cv(row,8), send_date: cdv(row,9), service_date: cdv(row,10), item_seq: cv(row,11), service_name: cv(row,12), qty: nv(row,13), price: nv(row,14), ceiling: nv(row,15), total_claim: nv(row,16), ps_code: cv(row,17), ps_pct: nv(row,18), compensated: nv(row,19), not_comp: nv(row,20), extra: nv(row,21), recall: nv(row,22), status: cv(row,23), note: cv(row,24), note_other: cv(row,25), hsend: cv(row,26), source_file: file.name })
     }
     return { rows }
   } catch (e) { return { rows: [], error: String(e) } }
@@ -186,9 +202,20 @@ const fmtBaht = (n: number) => n.toLocaleString('th-TH', { minimumFractionDigits
 const fmtNum  = (n: number) => n.toLocaleString('th-TH')
 
 function parseDateParts(d: string): { year: string; month: string } | null {
-  const parts = d.split('/')
-  if (parts.length !== 3) return null
-  return { month: parts[1].padStart(2,'0'), year: parts[2] }
+  if (!d) return null
+  // DD/MM/YYYY (Thai text)
+  const sp = d.split('/')
+  if (sp.length === 3) return { month: sp[1].padStart(2,'0'), year: sp[2] }
+  // YYYY-MM-DD (ISO)
+  const dp = d.split('-')
+  if (dp.length === 3 && dp[0].length === 4) return { month: dp[1].padStart(2,'0'), year: dp[0] }
+  // Excel serial stored as string (ข้อมูลเก่าที่ upload ก่อน fix)
+  const serial = parseInt(d)
+  if (!isNaN(serial) && serial > 1000) {
+    const date = new Date((serial - 25569) * 86400 * 1000)
+    return { month: (date.getUTCMonth()+1).toString().padStart(2,'0'), year: (date.getUTCFullYear()+543).toString() }
+  }
+  return null
 }
 function getReasonLabel(note: string, noteOther: string): string {
   const raw = note || ''
