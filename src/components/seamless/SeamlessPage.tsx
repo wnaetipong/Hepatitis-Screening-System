@@ -1,6 +1,7 @@
 'use client'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
+import type { ScreeningDB } from '@/types'
 
 // ── Types ──────────────────────────────────────────────────────────
 interface IndividualRow {
@@ -217,6 +218,11 @@ function parseDateParts(d: string): { year: string; month: string } | null {
   }
   return null
 }
+function isoToThai(s: string): string {
+  if (!s) return '—'
+  const p = s.split('-')
+  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s
+}
 function getReasonLabel(note: string, noteOther: string): string {
   const raw = note || ''
   if (raw.startsWith('C305')) return 'ไม่พบการแสดงตนยืนยันสิทธิ (C305)'
@@ -305,7 +311,7 @@ function DonutChart({ slices, size=120 }: { slices: { label: string; value: numb
   )
 }
 
-function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; c:number; comp:number; amount:number }[]; hasSmt?: boolean }) {
+function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; c:number; comp:number; notComp:number; amount:number }[]; hasSmt?: boolean }) {
   const [hov, setHov] = useState<number|null>(null)
   if (!data.length) return <div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>
   const W=1000, H=230, PAD={t:36,b:56,l:52,r:72}
@@ -313,12 +319,12 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
   const maxSvc=Math.max(...data.map(d=>d.b+d.c),1)
   const magSvc=Math.pow(10,Math.floor(Math.log10(maxSvc)))
   const niceL=Math.ceil(maxSvc/magSvc)*magSvc
-  const maxComp=Math.max(...data.map(d=>d.comp),1)
-  const magComp=Math.pow(10,Math.floor(Math.log10(maxComp)))
-  const niceR=Math.ceil(maxComp/magComp)*magComp
+  const maxAmt=Math.max(...data.map(d=>d.amount),1)
+  const magAmt=Math.pow(10,Math.floor(Math.log10(maxAmt)))
+  const niceR=Math.ceil(maxAmt/magAmt)*magAmt
   const n=data.length, slotW=chartW/n, bw=Math.max(7,Math.min(18,slotW/2.6))
-  const linePoints=data.map((d,i)=>`${(PAD.l+slotW*i+slotW/2).toFixed(1)},${(PAD.t+chartH*(1-d.comp/niceR)).toFixed(1)}`).join(' ')
-  const areaPoints=[(PAD.l+slotW/2).toFixed(1)+','+(PAD.t+chartH).toFixed(1),...data.map((d,i)=>`${(PAD.l+slotW*i+slotW/2).toFixed(1)},${(PAD.t+chartH*(1-d.comp/niceR)).toFixed(1)}`),(PAD.l+slotW*(n-1)+slotW/2).toFixed(1)+','+(PAD.t+chartH).toFixed(1)].join(' ')
+  const linePoints=data.map((d,i)=>`${(PAD.l+slotW*i+slotW/2).toFixed(1)},${(PAD.t+chartH*(1-d.amount/niceR)).toFixed(1)}`).join(' ')
+  const areaPoints=[(PAD.l+slotW/2).toFixed(1)+','+(PAD.t+chartH).toFixed(1),...data.map((d,i)=>`${(PAD.l+slotW*i+slotW/2).toFixed(1)},${(PAD.t+chartH*(1-d.amount/niceR)).toFixed(1)}`),(PAD.l+slotW*(n-1)+slotW/2).toFixed(1)+','+(PAD.t+chartH).toFixed(1)].join(' ')
   const fmtK=(v:number)=>v>=1000?`${(v/1000).toFixed(v%1000===0?0:1)}k`:String(v)
   return (
     <div className="w-full min-w-0" onMouseLeave={()=>setHov(null)} style={{pointerEvents:'all'}}>
@@ -336,7 +342,7 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
         <g clipPath="url(#cc)">{data.map((d,i)=>{const cx=PAD.l+slotW*i+slotW/2,hB=Math.max(0,(d.b/niceL)*chartH),hC=Math.max(0,(d.c/niceL)*chartH),isH=hov===i;return(<g key={d.label} opacity={hov!==null&&!isH?0.35:1} style={{transition:'opacity .15s'}} onMouseEnter={()=>setHov(i)}>{isH&&<rect x={PAD.l+slotW*i} y={PAD.t} width={slotW} height={chartH} fill="#eff6ff" opacity="0.7"/>}<rect x={cx-bw-1.5} y={PAD.t+chartH-hB} width={bw} height={hB} fill="url(#gb)" rx="3" filter="url(#ds)"/><rect x={cx+1.5} y={PAD.t+chartH-hC} width={bw} height={hC} fill="url(#gc)" rx="3" filter="url(#ds)"/></g>)})}</g>
         {hasSmt&&<><polygon points={areaPoints} fill="url(#ga)" clipPath="url(#cc)"/>
         <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" clipPath="url(#cc)"/>
-        {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.comp/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.comp>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}</>}
+        {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.amount/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.amount>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}</>}
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,mm=parseInt(d.label.split('/')[1]),yy=d.label.split('/')[0].slice(2),isH=hov===i;return(<g key={`lbl-${i}`}><text x={x} y={PAD.t+chartH+16} textAnchor="middle" fontSize="10.5" fill={isH?'#2563eb':'#6b7280'} fontWeight={isH?'700':'400'}>{MONTH_TH[mm]}</text><text x={x} y={PAD.t+chartH+29} textAnchor="middle" fontSize="9" fill="#c9d1d9">{yy}</text></g>)})}
         {/* Invisible hover rects ครอบทุก slot เพื่อ capture mouse events */}
         {data.map((_d,i)=>(
@@ -345,8 +351,8 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
             onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
         ))}
         {data.length>0&&<g><rect x={PAD.l+2} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={PAD.l+21} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {data[0].label.split('/')[0]}</text></g>}
-        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=148,th=102,tx=Math.max(PAD.l+4,Math.min(cx-tw/2,W-tw-4)),ty=Math.max(4,PAD.t-th-8),mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี: <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี: <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><circle cx={tx+14} cy={ty+73} r="4" fill="none" stroke="#10b981" strokeWidth="2"/><text x={tx+22} y={ty+77} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+92} fontSize="9" fill="#9ca3af">รวม {(d.b+d.c).toLocaleString()} รายการ</text>{d.amount>0&&<text x={tx+tw-10} y={ty+92} textAnchor="end" fontSize="9" fill="#6ee7b7">฿{d.amount.toLocaleString()}</text>}</g>)})()}
-        <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text><rect x="82" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="96" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text>{hasSmt&&<><line x1="172" y1="6" x2="186" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="179" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="190" y="10" fontSize="10" fill="#4b5563">เงินโอนเข้าบัญชี (วันโอนจริง SMT)</text></>}</g>
+        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=158,th=118,tx=Math.max(PAD.l+4,Math.min(cx-tw/2,W-tw-4)),ty=Math.max(4,PAD.t-th-8),mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี (คัดกรอง): <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี (คัดกรอง): <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><text x={tx+10} y={ty+75} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+89} fontSize="9.5" fill="#6b7280">ไม่ชดเชย: <tspan fontWeight="700" fill="#ef4444">{d.notComp.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+96} x2={tx+tw-10} y2={ty+96} stroke="#f3f4f6" strokeWidth="1"/>{d.amount>0&&<text x={tx+10} y={ty+109} fontSize="9" fill="#059669" fontWeight="600">฿{d.amount.toLocaleString()} (SMT)</text>}</g>)})()}
+        <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี (คัดกรอง)</text><rect x="130" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="144" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี (คัดกรอง)</text>{hasSmt&&<><line x1="270" y1="6" x2="284" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="277" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="288" y="10" fontSize="10" fill="#4b5563">ยอดโอน SMT (฿)</text></>}</g>
       </svg>
     </div>
   )
@@ -452,12 +458,14 @@ export function SeamlessPage({
   sharedSmtRows,
   onSumRowsChange,
   onSmtRowsChange,
+  screeningDB,
 }: {
   onOpenSettings?: () => void
   sharedSumRows?: { fiscal_year: string; rep_no: string; b_claim: number; b_comp: number; source_file: string }[]
   sharedSmtRows?: { fiscal_year: string; transferred: number; smt_ref: string; source_file: string }[]
   onSumRowsChange?: (rows: any[]) => void
   onSmtRowsChange?: (rows: any[]) => void
+  screeningDB?: ScreeningDB
 }) {
   // sub-tab
   const [subTab, setSubTab] = useState<'individual'|'summary'|'smt'>('individual')
@@ -722,43 +730,37 @@ export function SeamlessPage({
   },[hepRowsFiltered])
 
   const monthlyData = useMemo(()=>{
-    // bar บี/ซี → จัดตาม service_date
-    const svc:Record<string,{b:number;c:number}>={} 
+    // Bar: นับจาก screeningDB.date (ตาราง screenings)
+    const svc:Record<string,{b:number;c:number}>={}
+    if(screeningDB){
+      for(const byPid of Object.values(screeningDB.HBsAg)){
+        for(const {dates} of Object.values(byPid)){
+          for(const d of dates){const ds=parseDateParts(d);if(!ds)continue;const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};svc[k].b++}
+        }
+      }
+      for(const byPid of Object.values(screeningDB.AntiHCV)){
+        for(const {dates} of Object.values(byPid)){
+          for(const d of dates){const ds=parseDateParts(d);if(!ds)continue;const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};svc[k].c++}
+        }
+      }
+    }
+    // Comp/NotComp: จาก seamless_records โดยใช้ service_date
+    const compMap:Record<string,{comp:number;notComp:number}>={}
     for(const r of hepRowsFiltered){
-      const ds=parseDateParts(r.service_date)
-      if(ds){const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};if(isHepB(r.service_name))svc[k].b++;else svc[k].c++}
+      const ds=parseDateParts(r.service_date);if(!ds)continue
+      const k=`${ds.year}/${ds.month}`;if(!compMap[k])compMap[k]={comp:0,notComp:0}
+      if(r.status==='ชดเชย')compMap[k].comp++;else compMap[k].notComp++
     }
-    // เส้นชดเชย → ถ้ามี SMT ให้อิง transfer_date จาก SMT จริง
-    // ถ้ายังไม่มี SMT → fallback ใช้ send_date จาก Individual
-    const pay:Record<string,{comp:number;amount:number}>={}
-    if(smtRows.length>0){
-      // build rep_no → transfer_date map
-      const smtMap:Record<string,string>={}
-      for(const s of smtRows){ if(!smtMap[s.smt_ref]) smtMap[s.smt_ref]=s.transfer_date }
-      const repTransfer:Record<string,string>={}
-      for(const s of sumRows){
-        const refs=s.smt_ref.split(',').map(r=>r.trim())
-        const date=refs.map(r=>smtMap[r]).find(Boolean)
-        if(date) repTransfer[s.rep_no]=date
-      }
-      // นับตาม transfer_date ของแต่ละ rep_no
-      for(const r of hepRowsFiltered){
-        if(r.status!=='ชดเชย') continue
-        const tDate=repTransfer[r.rep_no]
-        if(!tDate) continue
-        // tDate format: YYYY-MM-DD (จาก parseThaiDate)
-        const parts=tDate.split('-')
-        if(parts.length!==3) continue
-        const yy=parts[0]; const mm=parts[1]
-        const k=`${yy}/${mm}`
-        if(!pay[k])pay[k]={comp:0,amount:0}
-        pay[k].comp++;pay[k].amount+=r.compensated
-      }
-    // ถ้าไม่มี SMT → pay ว่าง → เส้นชดเชยจะไม่แสดง
+    // เส้น: ยอดโอนจริงจาก smt_records โดยใช้ transfer_date
+    const pay:Record<string,{amount:number}>={}
+    for(const s of smtRows){
+      if(!s.transfer_date)continue
+      const ds=parseDateParts(s.transfer_date);if(!ds)continue
+      const k=`${ds.year}/${ds.month}`;if(!pay[k])pay[k]={amount:0};pay[k].amount+=s.transferred
     }
-    const all=[...new Set([...Object.keys(svc),...Object.keys(pay)])].sort()
-    return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:pay[label]?.comp??0,amount:pay[label]?.amount??0}))
-  },[hepRowsFiltered, smtRows, sumRows])
+    const all=[...new Set([...Object.keys(svc),...Object.keys(compMap),...Object.keys(pay)])].sort()
+    return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:compMap[label]?.comp??0,notComp:compMap[label]?.notComp??0,amount:pay[label]?.amount??0}))
+  },[screeningDB, hepRowsFiltered, smtRows])
 
   const filtered = useMemo(()=>{
     let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
@@ -867,10 +869,6 @@ export function SeamlessPage({
                 <div className="w-2 h-2 rounded-full bg-indigo-500"/>
                 <span className="font-bold text-gray-900 text-[13.5px]">แนวโน้มรายเดือน</span>
                 <span className="ml-2 text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{monthlyData.length} เดือน</span>
-                <div className="ml-auto flex items-center gap-4 text-[11px] text-gray-500">
-                  <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-600"/>Bar = วันรับบริการ</span>
-                  <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-emerald-500 rounded"/><span className="inline-block w-1.5 h-1.5 rounded-full border-2 border-emerald-500 bg-white -ml-1"/>เส้น = วันส่งข้อมูล สปสช.</span>
-                </div>
               </div>
               <div className="w-full overflow-x-auto">{monthlyData.length>0?<MonthlyChart data={monthlyData} hasSmt={smtRows.length>0}/>:<div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>}</div>
             </div>
@@ -951,7 +949,7 @@ export function SeamlessPage({
                         <td className="px-3 py-2.5 text-center">
                           {sumRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:tr?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}
                         </td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{tr?.date??'—'}</td>
+                        <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{tr ? isoToThai(tr.date) : '—'}</td>
                         <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
                         <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
                       </tr>

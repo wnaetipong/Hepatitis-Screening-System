@@ -113,6 +113,7 @@ export default function DashboardPage() {
           sharedSmtRows={smtRows}
           onSumRowsChange={setSumRows}
           onSmtRowsChange={setSmtRows}
+          screeningDB={db}
         />
       )}
 
