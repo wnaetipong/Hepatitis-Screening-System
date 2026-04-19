@@ -99,22 +99,27 @@ async function parseIndividual(file: File): Promise<{ rows: IndividualRow[]; err
 async function parseSummary(file: File): Promise<{ rows: SummaryRow[]; error?: string }> {
   try {
     const raw = await readXlsxRaw(file)
-    // หา data rows: แถวที่มี "เขต" ในคอลัมน์แรก (ไม่ใช่ "รวม")
+    // โครงสร้าง: row0-1=รายงาน, row4=header หลัก, row7-9=sub-header
+    // data rows เริ่มตั้งแต่แถวที่ col0 ไม่ว่าง และ col5(REP NO.)ขึ้นต้น DKTP
     const rows: SummaryRow[] = []
     for (let i = 0; i < raw.length; i++) {
       const row = raw[i]
       const col0 = cv(row, 0)
-      if (!col0 || col0 === 'รวม' || col0 === 'เขต' || col0 === 'ลำดับ') continue
-      const repNo = cv(row, 6)
+      // skip header/footer rows
+      if (!col0) continue
+      if (['รวม','เขต','ลำดับ'].includes(col0)) continue
+      const repNo = cv(row, 5)  // col 5 = REP NO.
       if (!repNo || !repNo.startsWith('DKTP')) continue
-      // ดึงปีงบจาก smt_ref หรือ rep_no
-      const smtRef = cv(row, 5)
+      // col 4 = งวด/เลขที่เบิกจ่าย (smt_ref) — อาจว่างได้
+      const smtRaw = cv(row, 4)
+      const smtRef = (smtRaw === 'nan' || smtRaw === 'NaN') ? '' : smtRaw
+      // ปีงบจาก rep_no: DKTP66... → 2566
       const yyStr = repNo.substring(4, 6)
-      const fiscalYear = yyStr ? `25${yyStr}` : ''
+      const fiscalYear = yyStr ? \`25\${yyStr}\` : ''
       rows.push({
         zone: col0, province: cv(row,1), hsend: cv(row,3), hospital_name: cv(row,4),
-        smt_ref: smtRef, rep_no: repNo, rep_date: cv(row,7),
-        n_claim: nv(row,8), b_claim: nv(row,9), n_comp: nv(row,10), b_comp: nv(row,11),
+        smt_ref: smtRef, rep_no: repNo, rep_date: cv(row,6),
+        n_claim: nv(row,7), b_claim: nv(row,8), n_comp: nv(row,9), b_comp: nv(row,10),
         n_notcomp: nv(row,12), fiscal_year: fiscalYear, source_file: file.name,
       })
     }
