@@ -116,8 +116,8 @@ function MiniBarChart({ data }: { data: { label: string; b: number; c: number; c
     <div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>
   )
 
-  const W = 960, H = 240
-  const PAD = { t: 36, b: 56, l: 56, r: 64 }
+  const W = 1000, H = 230
+  const PAD = { t: 36, b: 56, l: 52, r: 72 }
   const chartW = W - PAD.l - PAD.r
   const chartH = H - PAD.t - PAD.b
 
@@ -155,8 +155,10 @@ function MiniBarChart({ data }: { data: { label: string; b: number; c: number; c
   ].join(' ')
 
   return (
-    <div className="w-full" onMouseLeave={() => setHov(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{height:'auto', overflow:'visible'}}>
+    <div className="w-full min-w-0" onMouseLeave={() => setHov(null)}>
+      <svg viewBox={`0 0 ${W} ${H}`} xmlns="http://www.w3.org/2000/svg"
+        className="w-full block" preserveAspectRatio="xMidYMid meet"
+        style={{height:'auto', overflow:'visible', display:'block'}}>
         <defs>
           <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%" stopColor="#3b82f6"/><stop offset="100%" stopColor="#1e40af"/>
@@ -761,34 +763,42 @@ export function SeamlessPage() {
         <KpiCard icon="❌" label="ไม่ได้รับการชดเชย" val={`${fmtNum(stats.notComp)} รายการ`} sub={`฿${fmtBaht(stats.totalClaim - stats.totalComp)}`} barColor="#dc2626" bar={stats.total?stats.notComp/stats.total:0}/>
       </div>
 
-      {/* ── Charts Row ── */}
-      <div className="grid grid-cols-3 gap-4 mb-5">
-        {/* Monthly trend */}
-        <div className="col-span-2 bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-2 h-2 rounded-full bg-indigo-500"/><span className="font-bold text-gray-900 text-[13.5px]">แนวโน้มรายเดือน</span>
-            <span className="ml-auto text-[11px] text-gray-400">{monthlyData.length} เดือน</span>
+      {/* ── Monthly Chart (full width) ── */}
+      <div className="bg-white border border-gray-200 rounded-2xl p-5 pb-3 shadow-sm mb-5">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="w-2 h-2 rounded-full bg-indigo-500"/>
+          <span className="font-bold text-gray-900 text-[13.5px]">แนวโน้มรายเดือน</span>
+          <span className="ml-2 text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{monthlyData.length} เดือน</span>
+          <div className="ml-auto flex items-center gap-4 text-[11px] text-gray-500">
+            <span className="flex items-center gap-1.5"><span className="inline-block w-3 h-3 rounded-sm bg-blue-600"/>Bar = วันรับบริการ</span>
+            <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-emerald-500 rounded"/><span className="inline-block w-1.5 h-1.5 rounded-full border-2 border-emerald-500 bg-white -ml-1"/>เส้น = วันส่งข้อมูล สปสช.</span>
           </div>
-          {monthlyData.length > 0 ? <MiniBarChart data={monthlyData}/> : <div className="text-center text-gray-300 py-10 text-xs">ไม่มีข้อมูล</div>}
         </div>
+        <div className="w-full overflow-x-auto">
+          {monthlyData.length > 0
+            ? <MiniBarChart data={monthlyData}/>
+            : <div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>}
+        </div>
+      </div>
 
-        {/* B vs C + สิทธิ */}
-        <div className="flex flex-col gap-4">
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex-1">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 rounded-full bg-cyan-500"/><span className="font-bold text-gray-900 text-[13px]">บี vs ซี</span>
-            </div>
-            <DonutChart slices={[
-              {label:`ตับอักเสบ บี (${fmtNum(stats.hepB)})`, value:stats.hepB, color:'#2563eb'},
-              {label:`ตับอักเสบ ซี (${fmtNum(stats.hepC)})`, value:stats.hepC, color:'#0891b2'},
-            ]}/>
+      {/* ── Donut Row ── */}
+      <div className="grid grid-cols-2 gap-4 mb-5">
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-cyan-500"/>
+            <span className="font-bold text-gray-900 text-[13px]">บี vs ซี</span>
           </div>
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm flex-1">
-            <div className="flex items-center gap-2 mb-3">
-              <div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span>
-            </div>
-            <DonutChart slices={DONUT_RIGHTS}/>
+          <DonutChart slices={[
+            {label:`ตับอักเสบ บี (${fmtNum(stats.hepB)})`, value:stats.hepB, color:'#2563eb'},
+            {label:`ตับอักเสบ ซี (${fmtNum(stats.hepC)})`, value:stats.hepC, color:'#0891b2'},
+          ]}/>
+        </div>
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-amber-500"/>
+            <span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span>
           </div>
+          <DonutChart slices={DONUT_RIGHTS}/>
         </div>
       </div>
 
