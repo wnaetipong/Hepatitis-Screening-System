@@ -31,10 +31,19 @@ export async function POST(req: NextRequest) {
     if (!Array.isArray(body.rows) || !body.rows.length)
       return NextResponse.json({ ok: false, error: 'Missing rows' }, { status: 400 })
     const sb = createServerClient()
+    // Deduplicate by conflict key before upserting to avoid
+    // "ON CONFLICT DO UPDATE command cannot affect a row a second time"
+    const seen = new Set<string>()
+    const unique = (body.rows as Record<string, unknown>[]).filter(r => {
+      const key = `${r.smt_ref}|${r.batch_no}|${r.fund_sub}`
+      if (seen.has(key)) return false
+      seen.add(key)
+      return true
+    })
     const BATCH = 200
     let upserted = 0
-    for (let i = 0; i < body.rows.length; i += BATCH) {
-      const chunk = body.rows.slice(i, i + BATCH)
+    for (let i = 0; i < unique.length; i += BATCH) {
+      const chunk = unique.slice(i, i + BATCH)
       const { error, count } = await sb
         .from('smt_records')
         .upsert(chunk, { onConflict: 'smt_ref,batch_no,fund_sub', ignoreDuplicates: false, count: 'exact' })
