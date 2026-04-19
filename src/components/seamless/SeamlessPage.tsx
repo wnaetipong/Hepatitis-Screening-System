@@ -215,29 +215,57 @@ function KpiCard({ icon, label, val, sub, sub2, bar, barColor }: { icon:string; 
   )
 }
 
-function DonutChart({ slices }: { slices: { label: string; value: number; color: string }[] }) {
+function DonutChart({ slices, size=120 }: { slices: { label: string; value: number; color: string }[]; size?: number }) {
+  const [hov, setHov] = useState<number|null>(null)
   const total = slices.reduce((a,b) => a + b.value, 0)
-  if (!total) return <div className="text-center text-gray-300 py-4 text-xs">ไม่มีข้อมูล</div>
-  const R = 44, cx = 56, cy = 56, r = 24; let angle = -Math.PI / 2
-  const paths = slices.map(s => {
+  if (!total) return <div className="flex flex-col items-center justify-center py-8 text-gray-300 text-xs gap-2"><div className="w-16 h-16 rounded-full border-4 border-dashed border-gray-100 flex items-center justify-center text-[20px] opacity-40">?</div>ไม่มีข้อมูล</div>
+  const R = size*0.42, cx = size/2, cy = size/2, r = size*0.22
+  let angle = -Math.PI / 2
+  const paths = slices.map((s,i) => {
     const pct = s.value / total; const startA = angle; angle += pct * Math.PI * 2
     const x1 = cx + R * Math.cos(startA); const y1 = cy + R * Math.sin(startA)
     const x2 = cx + R * Math.cos(angle); const y2 = cy + R * Math.sin(angle)
-    return { ...s, d: `M${cx},${cy} L${x1},${y1} A${R},${R} 0 ${pct>0.5?1:0} 1 ${x2},${y2} Z`, pct }
+    // hover expand
+    const midA = startA + pct * Math.PI
+    const offset = hov === i ? 6 : 0
+    const ox = offset * Math.cos(midA), oy = offset * Math.sin(midA)
+    return { ...s, d: `M${cx+ox},${cy+oy} L${x1+ox},${y1+oy} A${R},${R} 0 ${pct>0.5?1:0} 1 ${x2+ox},${y2+oy} Z`, pct, i }
   })
+  const hovSlice = hov !== null ? paths[hov] : null
   return (
-    <div className="flex items-center gap-4">
-      <svg viewBox="0 0 112 112" style={{width:80,height:80,flexShrink:0}}>
-        {paths.map((p,i) => <path key={i} d={p.d} fill={p.color} opacity="0.9"/>)}
-        <circle cx={cx} cy={cy} r={r} fill="white"/>
-        <text x={cx} y={cy+4} textAnchor="middle" fontSize="10" fontWeight="bold" fill="#374151">{fmtNum(total)}</text>
-      </svg>
-      <div className="space-y-1 flex-1 min-w-0">
+    <div className="flex items-center gap-5">
+      <div className="relative flex-shrink-0" style={{width:size,height:size}}>
+        <svg viewBox={`0 0 ${size+16} ${size+16}`} style={{width:size+16,height:size+16,overflow:'visible'}}>
+          <g transform="translate(8,8)">
+            {paths.map((p,i) => (
+              <path key={i} d={p.d} fill={p.color}
+                opacity={hov===null?0.9:hov===i?1:0.45}
+                style={{transition:'opacity .15s, transform .15s', cursor:'pointer'}}
+                onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
+            ))}
+            <circle cx={cx} cy={cy} r={r} fill="white"/>
+            {hovSlice?(
+              <>
+                <text x={cx} y={cy-6} textAnchor="middle" fontSize={size*0.085} fontWeight="700" fill={hovSlice.color}>{(hovSlice.pct*100).toFixed(1)}%</text>
+                <text x={cx} y={cy+8} textAnchor="middle" fontSize={size*0.075} fill="#6b7280">{fmtNum(hovSlice.value)}</text>
+              </>
+            ):(
+              <>
+                <text x={cx} y={cy-4} textAnchor="middle" fontSize={size*0.09} fontWeight="700" fill="#1f2937">{fmtNum(total)}</text>
+                <text x={cx} y={cy+10} textAnchor="middle" fontSize={size*0.07} fill="#9ca3af">รายการ</text>
+              </>
+            )}
+          </g>
+        </svg>
+      </div>
+      <div className="flex-1 min-w-0 space-y-2">
         {paths.map((p,i) => (
-          <div key={i} className="flex items-center gap-1.5 text-[10.5px]">
-            <div className="w-2 h-2 rounded-sm flex-shrink-0" style={{background:p.color}}/>
-            <span className="text-gray-600 truncate flex-1">{p.label}</span>
-            <span className="font-bold text-gray-700 flex-shrink-0">{(p.pct*100).toFixed(0)}%</span>
+          <div key={i} className={cn('flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-pointer transition-all',hov===i?'bg-gray-50':'')}
+            onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}>
+            <div className="w-2.5 h-2.5 rounded-sm flex-shrink-0 transition-transform" style={{background:p.color, transform:hov===i?'scale(1.3)':'scale(1)'}}/>
+            <span className="text-[11.5px] text-gray-600 truncate flex-1">{p.label}</span>
+            <span className="text-[11.5px] font-bold flex-shrink-0" style={{color:hov===i?p.color:'#374151'}}>{(p.pct*100).toFixed(1)}%</span>
+            <span className="text-[10.5px] text-gray-400 flex-shrink-0 min-w-[40px] text-right">{fmtNum(p.value)}</span>
           </div>
         ))}
       </div>
@@ -245,7 +273,7 @@ function DonutChart({ slices }: { slices: { label: string; value: number; color:
   )
 }
 
-function MonthlyChart({ data }: { data: { label:string; b:number; c:number; comp:number; amount:number }[] }) {
+function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; c:number; comp:number; amount:number }[]; hasSmt?: boolean }) {
   const [hov, setHov] = useState<number|null>(null)
   if (!data.length) return <div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>
   const W=1000, H=230, PAD={t:36,b:56,l:52,r:72}
@@ -261,8 +289,8 @@ function MonthlyChart({ data }: { data: { label:string; b:number; c:number; comp
   const areaPoints=[(PAD.l+slotW/2).toFixed(1)+','+(PAD.t+chartH).toFixed(1),...data.map((d,i)=>`${(PAD.l+slotW*i+slotW/2).toFixed(1)},${(PAD.t+chartH*(1-d.comp/niceR)).toFixed(1)}`),(PAD.l+slotW*(n-1)+slotW/2).toFixed(1)+','+(PAD.t+chartH).toFixed(1)].join(' ')
   const fmtK=(v:number)=>v>=1000?`${(v/1000).toFixed(v%1000===0?0:1)}k`:String(v)
   return (
-    <div className="w-full min-w-0" onMouseLeave={()=>setHov(null)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full block" preserveAspectRatio="xMidYMid meet" style={{height:'auto',overflow:'visible',display:'block'}}>
+    <div className="w-full min-w-0" onMouseLeave={()=>setHov(null)} style={{pointerEvents:'all'}}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full block" preserveAspectRatio="xMidYMid meet" style={{height:'auto',overflow:'visible',display:'block',pointerEvents:'all'}}>
         <defs>
           <linearGradient id="gb" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#3b82f6"/><stop offset="100%" stopColor="#1e40af"/></linearGradient>
           <linearGradient id="gc" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stopColor="#06b6d4"/><stop offset="100%" stopColor="#0891b2"/></linearGradient>
@@ -278,9 +306,15 @@ function MonthlyChart({ data }: { data: { label:string; b:number; c:number; comp
         <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" clipPath="url(#cc)"/>
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.comp/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.comp>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,mm=parseInt(d.label.split('/')[1]),yy=d.label.split('/')[0].slice(2),isH=hov===i;return(<g key={`lbl-${i}`}><text x={x} y={PAD.t+chartH+16} textAnchor="middle" fontSize="10.5" fill={isH?'#2563eb':'#6b7280'} fontWeight={isH?'700':'400'}>{MONTH_TH[mm]}</text><text x={x} y={PAD.t+chartH+29} textAnchor="middle" fontSize="9" fill="#c9d1d9">{yy}</text></g>)})}
+        {/* Invisible hover rects ครอบทุก slot เพื่อ capture mouse events */}
+        {data.map((_d,i)=>(
+          <rect key={`htgt-${i}`} x={PAD.l+slotW*i} y={PAD.t} width={slotW} height={chartH+48}
+            fill="transparent" stroke="none"
+            onMouseEnter={()=>setHov(i)} onMouseLeave={()=>setHov(null)}/>
+        ))}
         {data.length>0&&<g><rect x={PAD.l+2} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={PAD.l+21} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {data[0].label.split('/')[0]}</text></g>}
         {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=148,th=102,tx=Math.max(PAD.l,Math.min(cx-tw/2,W-PAD.r-tw)),ty=PAD.t-th-12,mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี: <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี: <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><circle cx={tx+14} cy={ty+73} r="4" fill="none" stroke="#10b981" strokeWidth="2"/><text x={tx+22} y={ty+77} fontSize="9.5" fill="#6b7280">ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+92} fontSize="9" fill="#9ca3af">รวม {(d.b+d.c).toLocaleString()} รายการ</text>{d.amount>0&&<text x={tx+tw-10} y={ty+92} textAnchor="end" fontSize="9" fill="#6ee7b7">฿{d.amount.toLocaleString()}</text>}</g>)})()}
-        <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text><rect x="82" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="96" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text><line x1="172" y1="6" x2="186" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="179" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="190" y="10" fontSize="10" fill="#4b5563">ชดเชย ตาม</text><text x="190" y="21" fontSize="9" fill="#9ca3af">วันส่งข้อมูล สปสช.</text></g>
+        <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี</text><rect x="82" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="96" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี</text><line x1="172" y1="6" x2="186" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="179" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="190" y="10" fontSize="10" fill="#4b5563">เงินโอนเข้าบัญชี</text><text x="190" y="21" fontSize="9" fill={hasSmt?'#059669':'#9ca3af'}>{hasSmt?'อิงจาก SMT (วันโอนจริง)':'อิงจาก send_date (ยังไม่มี SMT)'}</text></g>
       </svg>
     </div>
   )
@@ -350,9 +384,14 @@ export function SeamlessPage() {
   const [loadingInd, setLoadingInd] = useState(false)
   const [loadingSum, setLoadingSum] = useState(false)
   const [loadingSmt, setLoadingSmt] = useState(false)
+  const [loadingSumYear, setLoadingSumYear] = useState<string|null>(null)
+  const [loadingSmtYear, setLoadingSmtYear] = useState<string|null>(null)
   const [progInd, setProgInd] = useState('')
   const [progSum, setProgSum] = useState('')
   const [progSmt, setProgSmt] = useState('')
+  // per-year lists — เพิ่มปีได้
+  const [sumYears, setSumYears] = useState(['2566','2567','2568','2569'])
+  const [smtYears, setSmtYears] = useState(['2566','2567','2568','2569'])
 
   // filters (Individual)
   const [search,       setSearch]      = useState('')
@@ -460,6 +499,67 @@ export function SeamlessPage() {
     setProgSmt('');setLoadingSmt(false)
   },[showToast])
 
+  const handleSumFilesYear = useCallback(async(files:File[], year:string)=>{
+    const valid=files.filter(f=>/\.(xlsx|xls)$/i.test(f.name))
+    if(!valid.length){showToast('กรุณาเลือกไฟล์ .xlsx',false);return}
+    setLoadingSumYear(year)
+    for(const f of valid){
+      setProgSum(`parse: ${f.name}`)
+      const {rows:parsed,error}=await parseSummary(f)
+      if(error){showToast(`อ่านไม่สำเร็จ: ${error}`,false);continue}
+      // กรองเฉพาะปีที่เลือก หรือ auto-detect ปีจากไฟล์
+      const toUpload = parsed.length > 0 ? parsed.map(r=>({...r, fiscal_year: year})) : []
+      if(!toUpload.length){showToast('ไม่พบข้อมูลในไฟล์',false);continue}
+      const j=await fetch('/api/rep-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:toUpload})}).then(r=>r.json())
+      if(j.ok){setSumRows(prev=>{const ex=new Set(prev.map(r=>r.rep_no));return[...prev,...toUpload.filter(r=>!ex.has(r.rep_no))]}); showToast(`✓ ปี ${year}: เพิ่ม ${fmtNum(j.imported??0)} batch`,true)}
+      else showToast(j.error,false)
+    }
+    setLoadingSumYear(null)
+  },[showToast])
+
+  const handleSmtFilesYear = useCallback(async(files:File[], year:string)=>{
+    const valid=files.filter(f=>/\.(xlsx|xls)$/i.test(f.name))
+    if(!valid.length){showToast('กรุณาเลือกไฟล์ .xlsx',false);return}
+    setLoadingSmtYear(year)
+    for(const f of valid){
+      setProgSmt(`parse: ${f.name}`)
+      const {rows:parsed,error}=await parseSmt(f)
+      if(error){showToast(`อ่านไม่สำเร็จ: ${error}`,false);continue}
+      const toUpload=parsed.map(r=>({...r,fiscal_year:year}))
+      if(!toUpload.length){showToast(`ไม่พบรายการ DKTP`,false);continue}
+      const BATCH=200; let total=0
+      for(let i=0;i<toUpload.length;i+=BATCH){
+        const chunk=toUpload.slice(i,i+BATCH)
+        const j=await fetch('/api/smt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:chunk})}).then(r=>r.json())
+        if(j.ok){total+=j.imported??0;setSmtRows(prev=>{const ex=new Set(prev.map(r=>`${r.smt_ref}|${r.batch_no}|${r.fund_sub}`));return[...prev,...chunk.filter(r=>!ex.has(`${r.smt_ref}|${r.batch_no}|${r.fund_sub}`))]})}
+        else{showToast(j.error,false);break}
+      }
+      showToast(`✓ ปี ${year}: เพิ่ม ${fmtNum(total)} DKTP`,total>0)
+    }
+    setLoadingSmtYear(null)
+  },[showToast])
+
+  const handleClearYear = useCallback(async(type:'summary'|'smt', year:string)=>{
+    if(!window.confirm(`ล้างข้อมูลปีงบ ${year} ของ ${type==='summary'?'REP Summary':'SMT'}?
+ข้อมูลจะถูกลบออกจาก Supabase`)) return
+    const url=type==='summary'?`/api/rep-summary?year=${year}`:`/api/smt?year=${year}`
+    const j=await fetch(url,{method:'DELETE'}).then(r=>r.json())
+    if(j.ok){
+      if(type==='summary') setSumRows(prev=>prev.filter(r=>r.fiscal_year!==year))
+      else setSmtRows(prev=>prev.filter(r=>r.fiscal_year!==year))
+      showToast(`✓ ล้างข้อมูลปีงบ ${year} เรียบร้อย`,true)
+    } else showToast(j.error,false)
+  },[showToast])
+
+  const handleAddYear = useCallback((type:'summary'|'smt')=>{
+    const lastYear = type==='summary'
+      ? (sumYears[sumYears.length-1]??'2569')
+      : (smtYears[smtYears.length-1]??'2569')
+    const nextYear = String(parseInt(lastYear)+1)
+    if(type==='summary') setSumYears(prev=>[...prev,nextYear])
+    else setSmtYears(prev=>[...prev,nextYear])
+  },[sumYears,smtYears])
+
   const handleClear = useCallback(async(type:'individual'|'summary'|'smt')=>{
     setConfirm(null)
     const url = type==='individual'?'/api/seamless':type==='summary'?'/api/rep-summary':'/api/smt'
@@ -474,6 +574,16 @@ export function SeamlessPage() {
 
   // ── Computed (Individual) ────────────────────────────────────────
   const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
+
+  // year lists (sync กับ state ที่มีข้อมูลจริงด้วย)
+  const SUM_YEARS = useMemo(()=>{
+    const fromData=[...new Set(sumRows.map(r=>r.fiscal_year).filter(Boolean))].sort()
+    return [...new Set([...sumYears,...fromData])].sort()
+  },[sumRows,sumYears])
+  const SMT_YEARS = useMemo(()=>{
+    const fromData=[...new Set(smtRows.map(r=>r.fiscal_year).filter(Boolean))].sort()
+    return [...new Set([...smtYears,...fromData])].sort()
+  },[smtRows,smtYears])
 
   const filterOptions = useMemo(()=>({
     years:   [...new Set(hepRows.map(r=>parseDateParts(r.service_date)?.year).filter(Boolean))].sort() as string[],
@@ -509,15 +619,49 @@ export function SeamlessPage() {
   },[hepRowsFiltered])
 
   const monthlyData = useMemo(()=>{
-    const svc:Record<string,{b:number;c:number}>={}, pay:Record<string,{comp:number;amount:number}>={}
+    // bar บี/ซี → จัดตาม service_date
+    const svc:Record<string,{b:number;c:number}>={} 
     for(const r of hepRowsFiltered){
       const ds=parseDateParts(r.service_date)
-      if(ds){const k=`${ds.year}/${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};if(isHepB(r.service_name))svc[k].b++;else svc[k].c++}
-      if(r.status==='ชดเชย'){const dp=parseDateParts(r.send_date);if(dp){const k=`${dp.year}/${dp.month}`;if(!pay[k])pay[k]={comp:0,amount:0};pay[k].comp++;pay[k].amount+=r.compensated}}
+      if(ds){const k=`\${ds.year}/\${ds.month}`;if(!svc[k])svc[k]={b:0,c:0};if(isHepB(r.service_name))svc[k].b++;else svc[k].c++}
+    }
+    // เส้นชดเชย → ถ้ามี SMT ให้อิง transfer_date จาก SMT จริง
+    // ถ้ายังไม่มี SMT → fallback ใช้ send_date จาก Individual
+    const pay:Record<string,{comp:number;amount:number}>={}
+    if(smtRows.length>0){
+      // build rep_no → transfer_date map
+      const smtMap:Record<string,string>={}
+      for(const s of smtRows){ if(!smtMap[s.smt_ref]) smtMap[s.smt_ref]=s.transfer_date }
+      const repTransfer:Record<string,string>={}
+      for(const s of sumRows){
+        const refs=s.smt_ref.split(',').map(r=>r.trim())
+        const date=refs.map(r=>smtMap[r]).find(Boolean)
+        if(date) repTransfer[s.rep_no]=date
+      }
+      // นับตาม transfer_date ของแต่ละ rep_no
+      for(const r of hepRowsFiltered){
+        if(r.status!=='ชดเชย') continue
+        const tDate=repTransfer[r.rep_no]
+        if(!tDate) continue
+        // tDate format: YYYY-MM-DD (จาก parseThaiDate)
+        const parts=tDate.split('-')
+        if(parts.length!==3) continue
+        const yy=parts[0]; const mm=parts[1]
+        const k=`\${yy}/\${mm}`
+        if(!pay[k])pay[k]={comp:0,amount:0}
+        pay[k].comp++;pay[k].amount+=r.compensated
+      }
+    } else {
+      // fallback: ใช้ send_date
+      for(const r of hepRowsFiltered){
+        if(r.status!=='ชดเชย') continue
+        const dp=parseDateParts(r.send_date)
+        if(dp){const k=`\${dp.year}/\${dp.month}`;if(!pay[k])pay[k]={comp:0,amount:0};pay[k].comp++;pay[k].amount+=r.compensated}
+      }
     }
     const all=[...new Set([...Object.keys(svc),...Object.keys(pay)])].sort()
     return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:pay[label]?.comp??0,amount:pay[label]?.amount??0}))
-  },[hepRowsFiltered])
+  },[hepRowsFiltered, smtRows, sumRows])
 
   const filtered = useMemo(()=>{
     let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
@@ -642,13 +786,13 @@ export function SeamlessPage() {
                   <span className="flex items-center gap-1.5"><span className="inline-block w-4 h-0.5 bg-emerald-500 rounded"/><span className="inline-block w-1.5 h-1.5 rounded-full border-2 border-emerald-500 bg-white -ml-1"/>เส้น = วันส่งข้อมูล สปสช.</span>
                 </div>
               </div>
-              <div className="w-full overflow-x-auto">{monthlyData.length>0?<MonthlyChart data={monthlyData}/>:<div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>}</div>
+              <div className="w-full overflow-x-auto">{monthlyData.length>0?<MonthlyChart data={monthlyData} hasSmt={smtRows.length>0}/>:<div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>}</div>
             </div>
 
             {/* Donut row */}
             <div className="grid grid-cols-2 gap-4 mb-5">
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-3"><div className="w-2 h-2 rounded-full bg-cyan-500"/><span className="font-bold text-gray-900 text-[13px]">บี vs ซี</span></div><DonutChart slices={[{label:`ตับอักเสบ บี (${fmtNum(stats.hepB)})`,value:stats.hepB,color:'#2563eb'},{label:`ตับอักเสบ ซี (${fmtNum(stats.hepC)})`,value:stats.hepC,color:'#0891b2'}]}/></div>
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-3"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div><DonutChart slices={DONUT_RIGHTS}/></div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-3"><div className="w-2 h-2 rounded-full bg-cyan-500"/><span className="font-bold text-gray-900 text-[13px]">บี vs ซี</span></div><DonutChart size={130} slices={[{label:`ตับอักเสบ บี (${fmtNum(stats.hepB)})`,value:stats.hepB,color:'#2563eb'},{label:`ตับอักเสบ ซี (${fmtNum(stats.hepC)})`,value:stats.hepC,color:'#0891b2'}]}/></div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-3"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div><DonutChart size={130} slices={DONUT_RIGHTS}/></div>
             </div>
 
             {/* Summary + Reasons */}
@@ -657,7 +801,7 @@ export function SeamlessPage() {
               <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
               <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-red-500"/><span className="font-bold text-gray-900 text-[13px]">สาเหตุไม่ชดเชย ({fmtNum(stats.notComp)})</span></div>
-                <DonutChart slices={DONUT_REASONS}/>
+                <DonutChart size={110} slices={DONUT_REASONS}/>
                 <div className="mt-3 space-y-1.5">{stats.reasons.map(([label,val],i)=>(<div key={i} className="flex items-start gap-2"><div className="w-2 h-2 rounded-sm mt-1 flex-shrink-0" style={{background:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]}}/><span className="text-[11px] text-gray-600 flex-1 leading-tight">{label}</span><span className="text-[11px] font-bold text-gray-500 flex-shrink-0">{val}</span></div>))}</div>
               </div>
             </div>
@@ -683,7 +827,7 @@ export function SeamlessPage() {
               <div className="overflow-x-auto" style={{maxHeight:'60vh'}}>
                 <table className="w-full border-collapse text-[12px]">
                   <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
-                    <tr>{['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','HSEND','วันที่บริการ','วันที่ส่ง','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
+                    <tr>{['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','วันที่บริการ','วันที่ส่ง','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','HSEND','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
                   </thead>
                   <tbody>
                     {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:pageRows.map((r,i)=>{
@@ -695,7 +839,6 @@ export function SeamlessPage() {
                         <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
                         <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
                         <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-600')}>{r.rights||'—'}</span></td>
-                        <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
                         <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.service_date}</td>
                         <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.send_date}</td>
                         <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{isHepB(r.service_name)?'🟦':'🔵'}<span className="truncate max-w-[180px]">{r.service_name}</span></span></td>
@@ -706,6 +849,7 @@ export function SeamlessPage() {
                           {sumRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:tr?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}
                         </td>
                         <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{tr?.date??'—'}</td>
+                        <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
                         <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
                       </tr>
                     })}
@@ -726,23 +870,57 @@ export function SeamlessPage() {
       {/* ── TAB: REP SUMMARY ── */}
       {subTab==='summary'&&(
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-4">
-            <UploadZone label="เพิ่มไฟล์ REP Summary" hint="ไฟล์จาก Seamless DMIS → REP → SUMMARY (.xlsx) — upload ได้ทุกปีงบ" accept=".xlsx,.xls" onFiles={handleSumFiles} loading={loadingSum} progress={progSum}/>
-            <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[13px] font-bold text-gray-800">REP Summary</div>
-                <div className="text-[12px] text-gray-400 mt-0.5">{fmtNum(sumRows.length)} REP batch · เชื่อมข้อมูล Individual ↔ SMT</div>
-                <div className="text-[11.5px] text-gray-400 mt-2">ไฟล์ที่ upload: {[...new Set(sumRows.map(r=>r.source_file))].join(', ')||'ยังไม่มี'}</div>
+          {/* Per-year upload zones */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-purple-500"/>
+                <span className="font-bold text-gray-900 text-[13.5px]">Upload REP Summary แยกตามปีงบ</span>
               </div>
-              {sumRows.length>0&&<button type="button" onClick={()=>setConfirm('summary')} className="px-3 py-1.5 text-[11.5px] text-red-500 border border-red-200 rounded-lg hover:bg-red-50">🗑 ล้าง</button>}
+              <div className="text-[11px] text-gray-400">{fmtNum(sumRows.length)} REP batch รวม</div>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {SUM_YEARS.map(yr=>{
+                const yrRows=sumRows.filter(r=>r.fiscal_year===yr)
+                const isLoading=loadingSumYear===yr
+                return (
+                  <div key={yr} className={cn('border-2 rounded-xl p-4 flex flex-col gap-3 transition-all',yrRows.length>0?'border-purple-200 bg-purple-50/40':'border-dashed border-gray-200 bg-gray-50/40 hover:border-purple-300')}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-gray-700">ปีงบ {yr}</span>
+                      {yrRows.length>0&&<span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-bold">{fmtNum(yrRows.length)} batch</span>}
+                    </div>
+                    {yrRows.length>0?(
+                      <div className="text-[11px] text-gray-500 space-y-0.5">
+                        <div>เรียกเก็บ: ฿{fmtBaht(yrRows.reduce((a,b)=>a+b.b_claim,0))}</div>
+                        <div className="text-emerald-600">ชดเชย: ฿{fmtBaht(yrRows.reduce((a,b)=>a+b.b_comp,0))}</div>
+                        <div className="text-[10.5px] text-gray-400 truncate">{[...new Set(yrRows.map(r=>r.source_file))][0]}</div>
+                      </div>
+                    ):(
+                      <div className="text-[11px] text-gray-400">ยังไม่มีข้อมูล</div>
+                    )}
+                    <div className="flex gap-1.5 mt-auto">
+                      <label className={cn('flex-1 text-center px-2 py-1.5 text-[11px] font-semibold rounded-lg cursor-pointer transition-all',yrRows.length>0?'bg-white border border-purple-200 text-purple-600 hover:bg-purple-50':'bg-purple-600 text-white hover:bg-purple-700')}>
+                        {isLoading?<span className="flex items-center justify-center gap-1"><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>...</span>:yrRows.length>0?'อัปเดต':'+ Upload'}
+                        <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const f=Array.from(e.target.files??[]);e.target.value='';if(f.length)handleSumFilesYear(f,yr)}}/>
+                      </label>
+                      {yrRows.length>0&&<button type="button" onClick={()=>handleClearYear('summary',yr)} className="px-2 py-1.5 text-[11px] text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-all">✕</button>}
+                    </div>
+                  </div>
+                )
+              })}
+              {/* เพิ่มปีใหม่ */}
+              <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[140px] hover:border-purple-300 transition-all cursor-pointer group" onClick={()=>handleAddYear('summary')}>
+                <div className="w-8 h-8 rounded-full border-2 border-gray-300 group-hover:border-purple-400 flex items-center justify-center transition-all"><span className="text-gray-400 group-hover:text-purple-500 text-lg leading-none">+</span></div>
+                <div className="text-[11px] text-gray-400 group-hover:text-purple-500">เพิ่มปีใหม่</div>
+              </div>
             </div>
           </div>
 
           {sumRows.length===0?(
-            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-12 text-center text-gray-400">
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
               <div className="text-4xl mb-4 opacity-30">📑</div>
               <div className="text-[14px]">ยังไม่มีข้อมูล REP Summary</div>
-              <div className="text-[12px] mt-1">upload ไฟล์จาก Seamless DMIS → REP → รายงาน REP แบบ Summary</div>
+              <div className="text-[12px] mt-1">กด Upload ที่ปีงบที่ต้องการด้านบน</div>
             </div>
           ):(
             <div className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
@@ -787,23 +965,57 @@ export function SeamlessPage() {
       {/* ── TAB: SMT ── */}
       {subTab==='smt'&&(
         <div className="space-y-5">
-          <div className="grid grid-cols-3 gap-4">
-            <UploadZone label="เพิ่มไฟล์ SMT" hint="ไฟล์จากระบบ Smart Money Transfer (1 ไฟล์ = 1 ปีงบ) — upload ได้หลายครั้ง" accept=".xlsx,.xls" onFiles={handleSmtFiles} loading={loadingSmt} progress={progSmt}/>
-            <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[13px] font-bold text-gray-800">Smart Money Transfer (DKTP)</div>
-                <div className="text-[12px] text-gray-400 mt-0.5">{fmtNum(smtRows.length)} รายการโอน DKTP · ยอดโอนรวม ฿{fmtBaht(smtRows.reduce((a,b)=>a+b.transferred,0))}</div>
-                <div className="text-[11.5px] text-gray-400 mt-2">ปีงบที่มีข้อมูล: {[...new Set(smtRows.map(r=>r.fiscal_year))].sort().join(', ')||'ยังไม่มี'}</div>
+          {/* Per-year upload zones */}
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-2 h-2 rounded-full bg-teal-500"/>
+                <span className="font-bold text-gray-900 text-[13.5px]">Upload SMT แยกตามปีงบ</span>
+                <span className="text-[11px] text-gray-400">— ระบบกรองเฉพาะรายการ DKTP อัตโนมัติ</span>
               </div>
-              {smtRows.length>0&&<button type="button" onClick={()=>setConfirm('smt')} className="px-3 py-1.5 text-[11.5px] text-red-500 border border-red-200 rounded-lg hover:bg-red-50">🗑 ล้าง</button>}
+              <div className="text-[11px] text-gray-400">ยอดโอนรวม ฿{fmtBaht(smtRows.reduce((a,b)=>a+b.transferred,0))}</div>
+            </div>
+            <div className="grid grid-cols-4 gap-3">
+              {SMT_YEARS.map(yr=>{
+                const yrRows=smtRows.filter(r=>r.fiscal_year===yr)
+                const isLoading=loadingSmtYear===yr
+                return (
+                  <div key={yr} className={cn('border-2 rounded-xl p-4 flex flex-col gap-3 transition-all',yrRows.length>0?'border-teal-200 bg-teal-50/40':'border-dashed border-gray-200 bg-gray-50/40 hover:border-teal-300')}>
+                    <div className="flex items-center justify-between">
+                      <span className="text-[12px] font-bold text-gray-700">ปีงบ {yr}</span>
+                      {yrRows.length>0&&<span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-[10px] font-bold">{fmtNum(yrRows.length)} รายการ</span>}
+                    </div>
+                    {yrRows.length>0?(
+                      <div className="text-[11px] text-gray-500 space-y-0.5">
+                        <div>DKTP: {fmtNum(new Set(yrRows.map(r=>r.smt_ref)).size)} งวด</div>
+                        <div className="text-emerald-600 font-semibold">โอน: ฿{fmtBaht(yrRows.reduce((a,b)=>a+b.transferred,0))}</div>
+                        <div className="text-[10.5px] text-gray-400 truncate">{[...new Set(yrRows.map(r=>r.source_file))][0]}</div>
+                      </div>
+                    ):(
+                      <div className="text-[11px] text-gray-400">ยังไม่มีข้อมูล</div>
+                    )}
+                    <div className="flex gap-1.5 mt-auto">
+                      <label className={cn('flex-1 text-center px-2 py-1.5 text-[11px] font-semibold rounded-lg cursor-pointer transition-all',yrRows.length>0?'bg-white border border-teal-200 text-teal-600 hover:bg-teal-50':'bg-teal-600 text-white hover:bg-teal-700')}>
+                        {isLoading?<span className="flex items-center justify-center gap-1"><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>...</span>:yrRows.length>0?'อัปเดต':'+ Upload'}
+                        <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const f=Array.from(e.target.files??[]);e.target.value='';if(f.length)handleSmtFilesYear(f,yr)}}/>
+                      </label>
+                      {yrRows.length>0&&<button type="button" onClick={()=>handleClearYear('smt',yr)} className="px-2 py-1.5 text-[11px] text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-all">✕</button>}
+                    </div>
+                  </div>
+                )
+              })}
+              <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[140px] hover:border-teal-300 transition-all cursor-pointer group" onClick={()=>handleAddYear('smt')}>
+                <div className="w-8 h-8 rounded-full border-2 border-gray-300 group-hover:border-teal-400 flex items-center justify-center transition-all"><span className="text-gray-400 group-hover:text-teal-500 text-lg leading-none">+</span></div>
+                <div className="text-[11px] text-gray-400 group-hover:text-teal-500">เพิ่มปีใหม่</div>
+              </div>
             </div>
           </div>
 
           {smtRows.length===0?(
-            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-12 text-center text-gray-400">
+            <div className="bg-gray-50 border border-gray-200 rounded-2xl p-10 text-center text-gray-400">
               <div className="text-4xl mb-4 opacity-30">💳</div>
               <div className="text-[14px]">ยังไม่มีข้อมูล SMT</div>
-              <div className="text-[12px] mt-1">upload ไฟล์จากระบบ Smart Money Transfer ปีงบ 2566-2569</div>
+              <div className="text-[12px] mt-1">กด Upload ที่ปีงบที่ต้องการด้านบน</div>
               <div className="text-[11px] mt-1 text-gray-300">ระบบจะกรองเฉพาะรายการ DKTP โดยอัตโนมัติ</div>
             </div>
           ):(

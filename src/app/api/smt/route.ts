@@ -47,12 +47,20 @@ export async function POST(req: NextRequest) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
   try {
     const sb = createServerClient()
-    const { error } = await sb.from('smt_records').delete().gte('id', 0)
+    const { searchParams } = new URL(req.url)
+    const year = searchParams.get('year')
+    let query = sb.from('smt_records').delete()
+    if (year) {
+      query = query.eq('fiscal_year', year)
+    } else {
+      query = query.gte('id', 0) // ลบทั้งหมด
+    }
+    const { error } = await query
     if (error) throw new Error(error.message)
-    return NextResponse.json({ ok: true })
+    return NextResponse.json({ ok: true, year: year ?? 'all' })
   } catch (err) {
     return NextResponse.json({ ok: false, error: String(err) }, { status: 500 })
   }
