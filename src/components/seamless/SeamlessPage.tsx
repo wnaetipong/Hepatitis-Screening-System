@@ -325,6 +325,46 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
   )
 }
 
+// ── Compare Bar Chart (บี vs ซี) ─────────────────────────────────
+function CompareBarChart({ items }: {
+  items: { label: string; total: number; comp: number; unique: number; color: string }[]
+}) {
+  const maxTotal = Math.max(...items.map(d => d.total), 1)
+  return (
+    <div className="space-y-5">
+      {items.map((item, i) => {
+        const pct = item.total > 0 ? (item.comp / item.total * 100) : 0
+        const barW = (item.total / maxTotal * 100)
+        return (
+          <div key={i}>
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-[12.5px] font-semibold text-gray-800">{item.label}</span>
+              <span className="text-[11px] text-gray-400">{fmtNum(item.unique)} ราย</span>
+            </div>
+            {/* bar รายการทั้งหมด */}
+            <div className="relative h-8 bg-gray-100 rounded-lg overflow-hidden mb-1">
+              <div className="absolute inset-y-0 left-0 rounded-lg transition-all duration-700"
+                style={{width:`${barW}%`, background:item.color, opacity:0.15}}/>
+              <div className="absolute inset-y-0 left-0 rounded-lg transition-all duration-700"
+                style={{width:`${barW * pct / 100}%`, background:item.color}}/>
+              <div className="absolute inset-0 flex items-center px-3 justify-between">
+                <span className="text-[11.5px] font-bold" style={{color: pct > 30 ? 'white' : item.color}}>
+                  {fmtNum(item.comp)} ชดเชย
+                </span>
+                <span className="text-[11px] text-gray-500">{fmtNum(item.total)} รายการ</span>
+              </div>
+            </div>
+            <div className="flex items-center justify-between text-[11px]">
+              <span className="text-gray-400">อัตราชดเชย</span>
+              <span className="font-bold" style={{color:item.color}}>{pct.toFixed(1)}%</span>
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function Chip({ label, onRemove, color }: { label:string; onRemove:()=>void; color:'blue'|'purple'|'green'|'amber' }) {
   const cls = { blue:'bg-blue-100 text-blue-700 border-blue-200', purple:'bg-purple-100 text-purple-700 border-purple-200', green:'bg-green-100 text-green-700 border-green-200', amber:'bg-amber-100 text-amber-700 border-amber-200' }
   return <span className={cn('inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold border',cls[color])}>{label}<button type="button" onClick={onRemove} className="w-3.5 h-3.5 rounded-full bg-black/10 hover:bg-black/20 flex items-center justify-center text-[9px] ml-0.5 transition-all">✕</button></span>
@@ -375,7 +415,7 @@ function UploadZone({ label, hint, accept, onFiles, loading, progress }: { label
 }
 
 // ── Main ───────────────────────────────────────────────────────────
-export function SeamlessPage() {
+export function SeamlessPage({ onOpenSettings }: { onOpenSettings?: () => void }) {
   // sub-tab
   const [subTab, setSubTab] = useState<'individual'|'summary'|'smt'>('individual')
 
@@ -728,17 +768,22 @@ export function SeamlessPage() {
       {/* ── TAB: INDIVIDUAL ── */}
       {subTab==='individual'&&(
         <>
-          {/* Upload row */}
-          <div className="grid grid-cols-3 gap-4 mb-5">
-            <UploadZone label="เพิ่มไฟล์ REP Individual" hint="ไฟล์จาก Seamless DMIS → REP → INDIVIDUAL (.xlsx)" accept=".xlsx,.xls" onFiles={handleIndFiles} loading={loadingInd} progress={progInd}/>
-            <div className="col-span-2 bg-white border border-gray-200 rounded-xl p-4 flex items-center justify-between">
-              <div>
-                <div className="text-[13px] font-bold text-gray-800">REP Individual</div>
-                <div className="text-[12px] text-gray-400 mt-0.5">{fmtNum(indRows.length)} รายการ · ตับอักเสบ {fmtNum(hepRows.length)} รายการ · {filterOptions.sources.length} ไฟล์</div>
-                <div className="flex flex-wrap gap-1.5 mt-2">{filterOptions.sources.map((f,i)=><span key={i} className="px-2 py-0.5 bg-blue-50 border border-blue-100 rounded-full text-[10.5px] text-blue-600">📄 {f}</span>)}</div>
+          {/* Info bar + ปุ่มเปิด Settings */}
+          <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 mb-5 shadow-sm flex items-center gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-2 h-2 rounded-full bg-blue-500"/>
+                <span className="font-bold text-gray-900 text-[13px]">REP Individual</span>
+                <span className="px-2 py-0.5 bg-blue-50 border border-blue-200 rounded-full text-[10.5px] text-blue-600 font-semibold">{fmtNum(indRows.length)} รายการ</span>
+                {hepRows.length > 0 && <span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full text-[10.5px] text-emerald-600 font-semibold">ตับอักเสบ {fmtNum(hepRows.length)} รายการ</span>}
               </div>
-              {indRows.length>0&&<button type="button" onClick={()=>setConfirm('individual')} className="px-3 py-1.5 text-[11.5px] text-red-500 border border-red-200 rounded-lg hover:bg-red-50 transition-all">🗑 ล้างทั้งหมด</button>}
+              <div className="flex flex-wrap gap-1.5">{filterOptions.sources.map((f,i)=><span key={i} className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-[10.5px] text-gray-500">📄 {f}</span>)}</div>
             </div>
+            <button type="button" onClick={()=>onOpenSettings?.()}
+              className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-all shadow-sm">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/></svg>
+              นำเข้าข้อมูล
+            </button>
           </div>
 
           {indRows.length>0&&<>
@@ -795,9 +840,26 @@ export function SeamlessPage() {
             </div>
 
             {/* Donut row */}
+            {/* การตรวจคัดกรองไวรัสตับอักเสบ บี vs ซี + สิทธิ */}
             <div className="grid grid-cols-2 gap-4 mb-5">
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-3"><div className="w-2 h-2 rounded-full bg-cyan-500"/><span className="font-bold text-gray-900 text-[13px]">บี vs ซี</span></div><DonutChart size={130} slices={[{label:`ตับอักเสบ บี (${fmtNum(stats.hepB)})`,value:stats.hepB,color:'#2563eb'},{label:`ตับอักเสบ ซี (${fmtNum(stats.hepC)})`,value:stats.hepC,color:'#0891b2'}]}/></div>
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-3"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div><DonutChart size={130} slices={DONUT_RIGHTS}/></div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-4">
+                  <div className="w-2 h-2 rounded-full bg-indigo-500"/>
+                  <span className="font-bold text-gray-900 text-[13px]">การตรวจคัดกรองไวรัสตับอักเสบ</span>
+                </div>
+                <CompareBarChart items={[
+                  {label:'ไวรัสตับอักเสบ บี (HBsAg)', total:stats.hepB, comp:hepRowsFiltered.filter(r=>isHepB(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueB, color:'#2563eb'},
+                  {label:'ไวรัสตับอักเสบ ซี (Anti-HCV)', total:stats.hepC, comp:hepRowsFiltered.filter(r=>isHepC(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueC, color:'#0891b2'},
+                ]}/>
+                <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-[11.5px]">
+                  <div className="flex justify-between"><span className="text-gray-500">รวมทั้งหมด</span><span className="font-bold">{fmtNum(stats.total)} รายการ</span></div>
+                  <div className="flex justify-between"><span className="text-gray-500">ยอดชดเชย</span><span className="font-bold text-emerald-600">฿{fmtBaht(stats.totalComp)}</span></div>
+                </div>
+              </div>
+              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+                <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div>
+                <DonutChart size={130} slices={DONUT_RIGHTS}/>
+              </div>
             </div>
 
             {/* Summary + Reasons */}
@@ -875,50 +937,23 @@ export function SeamlessPage() {
       {/* ── TAB: REP SUMMARY ── */}
       {subTab==='summary'&&(
         <div className="space-y-5">
-          {/* Per-year upload zones */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
+          {/* Summary info bar */}
+          <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex items-center gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-purple-500"/>
-                <span className="font-bold text-gray-900 text-[13.5px]">Upload REP Summary แยกตามปีงบ</span>
+                <span className="font-bold text-gray-900 text-[13px]">REP Summary</span>
+                <span className="px-2 py-0.5 bg-purple-50 border border-purple-200 rounded-full text-[10.5px] text-purple-600 font-semibold">{fmtNum(sumRows.length)} batch</span>
               </div>
-              <div className="text-[11px] text-gray-400">{fmtNum(sumRows.length)} REP batch รวม</div>
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              {SUM_YEARS.map(yr=>{
-                const yrRows=sumRows.filter(r=>r.fiscal_year===yr)
-                const isLoading=loadingSumYear===yr
-                return (
-                  <div key={yr} className={cn('border-2 rounded-xl p-4 flex flex-col gap-3 transition-all',yrRows.length>0?'border-purple-200 bg-purple-50/40':'border-dashed border-gray-200 bg-gray-50/40 hover:border-purple-300')}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12px] font-bold text-gray-700">ปีงบ {yr}</span>
-                      {yrRows.length>0&&<span className="px-2 py-0.5 bg-purple-100 text-purple-700 rounded-full text-[10px] font-bold">{fmtNum(yrRows.length)} batch</span>}
-                    </div>
-                    {yrRows.length>0?(
-                      <div className="text-[11px] text-gray-500 space-y-0.5">
-                        <div>เรียกเก็บ: ฿{fmtBaht(yrRows.reduce((a,b)=>a+b.b_claim,0))}</div>
-                        <div className="text-emerald-600">ชดเชย: ฿{fmtBaht(yrRows.reduce((a,b)=>a+b.b_comp,0))}</div>
-                        <div className="text-[10.5px] text-gray-400 truncate">{[...new Set(yrRows.map(r=>r.source_file))][0]}</div>
-                      </div>
-                    ):(
-                      <div className="text-[11px] text-gray-400">ยังไม่มีข้อมูล</div>
-                    )}
-                    <div className="flex gap-1.5 mt-auto">
-                      <label className={cn('flex-1 text-center px-2 py-1.5 text-[11px] font-semibold rounded-lg cursor-pointer transition-all',yrRows.length>0?'bg-white border border-purple-200 text-purple-600 hover:bg-purple-50':'bg-purple-600 text-white hover:bg-purple-700')}>
-                        {isLoading?<span className="flex items-center justify-center gap-1"><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>...</span>:yrRows.length>0?'อัปเดต':'+ Upload'}
-                        <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const f=Array.from(e.target.files??[]);e.target.value='';if(f.length)handleSumFilesYear(f,yr)}}/>
-                      </label>
-                      {yrRows.length>0&&<button type="button" onClick={()=>handleClearYear('summary',yr)} className="px-2 py-1.5 text-[11px] text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-all">✕</button>}
-                    </div>
-                  </div>
-                )
-              })}
-              {/* เพิ่มปีใหม่ */}
-              <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[140px] hover:border-purple-300 transition-all cursor-pointer group" onClick={()=>handleAddYear('summary')}>
-                <div className="w-8 h-8 rounded-full border-2 border-gray-300 group-hover:border-purple-400 flex items-center justify-center transition-all"><span className="text-gray-400 group-hover:text-purple-500 text-lg leading-none">+</span></div>
-                <div className="text-[11px] text-gray-400 group-hover:text-purple-500">เพิ่มปีใหม่</div>
+              <div className="flex flex-wrap gap-1.5">
+                {SUM_YEARS.map(yr=>{const n=sumRows.filter(r=>r.fiscal_year===yr).length;return n>0?<span key={yr} className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-[10.5px] text-gray-500">ปี {yr}: {n} batch</span>:null})}
               </div>
             </div>
+            <button type="button" onClick={()=>onOpenSettings?.()}
+              className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-purple-600 text-white rounded-xl hover:bg-purple-700 transition-all shadow-sm">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/></svg>
+              นำเข้าข้อมูล
+            </button>
           </div>
 
           {sumRows.length===0?(
@@ -970,50 +1005,24 @@ export function SeamlessPage() {
       {/* ── TAB: SMT ── */}
       {subTab==='smt'&&(
         <div className="space-y-5">
-          {/* Per-year upload zones */}
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-2">
+          {/* SMT info bar */}
+          <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 shadow-sm flex items-center gap-4">
+            <div className="flex-1">
+              <div className="flex items-center gap-2 mb-1">
                 <div className="w-2 h-2 rounded-full bg-teal-500"/>
-                <span className="font-bold text-gray-900 text-[13.5px]">Upload SMT แยกตามปีงบ</span>
-                <span className="text-[11px] text-gray-400">— ระบบกรองเฉพาะรายการ DKTP อัตโนมัติ</span>
+                <span className="font-bold text-gray-900 text-[13px]">Smart Money Transfer (DKTP)</span>
+                <span className="px-2 py-0.5 bg-teal-50 border border-teal-200 rounded-full text-[10.5px] text-teal-600 font-semibold">{fmtNum(smtRows.length)} รายการ</span>
+                {smtRows.length>0&&<span className="px-2 py-0.5 bg-emerald-50 border border-emerald-200 rounded-full text-[10.5px] text-emerald-600 font-semibold">฿{fmtBaht(smtRows.reduce((a,b)=>a+b.transferred,0))}</span>}
               </div>
-              <div className="text-[11px] text-gray-400">ยอดโอนรวม ฿{fmtBaht(smtRows.reduce((a,b)=>a+b.transferred,0))}</div>
-            </div>
-            <div className="grid grid-cols-4 gap-3">
-              {SMT_YEARS.map(yr=>{
-                const yrRows=smtRows.filter(r=>r.fiscal_year===yr)
-                const isLoading=loadingSmtYear===yr
-                return (
-                  <div key={yr} className={cn('border-2 rounded-xl p-4 flex flex-col gap-3 transition-all',yrRows.length>0?'border-teal-200 bg-teal-50/40':'border-dashed border-gray-200 bg-gray-50/40 hover:border-teal-300')}>
-                    <div className="flex items-center justify-between">
-                      <span className="text-[12px] font-bold text-gray-700">ปีงบ {yr}</span>
-                      {yrRows.length>0&&<span className="px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full text-[10px] font-bold">{fmtNum(yrRows.length)} รายการ</span>}
-                    </div>
-                    {yrRows.length>0?(
-                      <div className="text-[11px] text-gray-500 space-y-0.5">
-                        <div>DKTP: {fmtNum(new Set(yrRows.map(r=>r.smt_ref)).size)} งวด</div>
-                        <div className="text-emerald-600 font-semibold">โอน: ฿{fmtBaht(yrRows.reduce((a,b)=>a+b.transferred,0))}</div>
-                        <div className="text-[10.5px] text-gray-400 truncate">{[...new Set(yrRows.map(r=>r.source_file))][0]}</div>
-                      </div>
-                    ):(
-                      <div className="text-[11px] text-gray-400">ยังไม่มีข้อมูล</div>
-                    )}
-                    <div className="flex gap-1.5 mt-auto">
-                      <label className={cn('flex-1 text-center px-2 py-1.5 text-[11px] font-semibold rounded-lg cursor-pointer transition-all',yrRows.length>0?'bg-white border border-teal-200 text-teal-600 hover:bg-teal-50':'bg-teal-600 text-white hover:bg-teal-700')}>
-                        {isLoading?<span className="flex items-center justify-center gap-1"><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin"/>...</span>:yrRows.length>0?'อัปเดต':'+ Upload'}
-                        <input type="file" accept=".xlsx,.xls" className="hidden" onChange={e=>{const f=Array.from(e.target.files??[]);e.target.value='';if(f.length)handleSmtFilesYear(f,yr)}}/>
-                      </label>
-                      {yrRows.length>0&&<button type="button" onClick={()=>handleClearYear('smt',yr)} className="px-2 py-1.5 text-[11px] text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-all">✕</button>}
-                    </div>
-                  </div>
-                )
-              })}
-              <div className="border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[140px] hover:border-teal-300 transition-all cursor-pointer group" onClick={()=>handleAddYear('smt')}>
-                <div className="w-8 h-8 rounded-full border-2 border-gray-300 group-hover:border-teal-400 flex items-center justify-center transition-all"><span className="text-gray-400 group-hover:text-teal-500 text-lg leading-none">+</span></div>
-                <div className="text-[11px] text-gray-400 group-hover:text-teal-500">เพิ่มปีใหม่</div>
+              <div className="flex flex-wrap gap-1.5">
+                {SMT_YEARS.map(yr=>{const n=smtRows.filter(r=>r.fiscal_year===yr).length;return n>0?<span key={yr} className="px-2 py-0.5 bg-gray-50 border border-gray-200 rounded-full text-[10.5px] text-gray-500">ปี {yr}: {n} รายการ</span>:null})}
               </div>
             </div>
+            <button type="button" onClick={()=>onOpenSettings?.()}
+              className="flex items-center gap-2 px-4 py-2 text-[12.5px] font-semibold bg-teal-600 text-white rounded-xl hover:bg-teal-700 transition-all shadow-sm">
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3.5 h-3.5"><path d="M8 2v4M8 10v4M2 8h4M10 8h4"/><circle cx="8" cy="8" r="2"/></svg>
+              นำเข้าข้อมูล
+            </button>
           </div>
 
           {smtRows.length===0?(

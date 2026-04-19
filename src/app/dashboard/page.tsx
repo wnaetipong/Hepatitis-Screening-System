@@ -29,7 +29,7 @@ export default function DashboardPage() {
   const { db, lastImported, loading: sLoading, reload: reloadScreening } = useScreeningData()
   const { cfg, save: saveCfg, reset: resetCfg } = useConfig()
 
-  const [activeTab, setActiveTab] = useState<AppTab>('dashboard')
+  const [activeTab,  setActiveTab]  = useState<AppTab>('dashboard')
   const [activeMoo,  setActiveMoo]  = useState('all')
   const [panelOpen,  setPanelOpen]  = useState(false)
   const [panelTab,   setPanelTab]   = useState<PanelTab>('settings')
@@ -40,8 +40,11 @@ export default function DashboardPage() {
 
   const handleSelectMoo = useCallback((moo: string) => setActiveMoo(moo), [])
   const handleReload    = useCallback(() => { reloadVillage(); reloadScreening() }, [reloadVillage, reloadScreening])
-  const openImport      = useCallback(() => { setPanelTab('import');   setPanelOpen(true) }, [])
-  const openSettings    = useCallback(() => { setPanelTab('settings'); setPanelOpen(true) }, [])
+
+  // เปิด SettingsPanel ได้จากทุก tab
+  const openSettings    = useCallback((tab: PanelTab = 'settings') => {
+    setPanelTab(tab); setPanelOpen(true)
+  }, [])
 
   const syncedSlots = slots.map(s => ({
     ...s,
@@ -53,8 +56,12 @@ export default function DashboardPage() {
     <ToastProvider>
       {isLoading && activeTab === 'dashboard' && <LoadingOverlay msg="กำลังโหลดข้อมูลจาก Supabase..." />}
 
-      {/* Topbar */}
-      <Topbar cfg={cfg} onImport={openImport} onSettings={openSettings} onReload={handleReload} />
+      {/* Topbar — เหลือแค่ รีโหลด + ตั้งค่า ใช้ได้ทุก tab */}
+      <Topbar
+        cfg={cfg}
+        onReload={handleReload}
+        onSettings={() => openSettings('settings')}
+      />
 
       {/* Navigation Tabs */}
       <div className="bg-white border-b border-gray-200 px-8 sticky top-16 z-40">
@@ -82,24 +89,34 @@ export default function DashboardPage() {
         <main className="max-w-[1440px] mx-auto px-8 py-7">
           <KpiCards village={village} db={db} cfg={cfg} lastImported={lastImported} />
           <OverviewChart village={village} db={db} cfg={cfg} activeMoo={activeMoo} onSelectMoo={handleSelectMoo} />
-          <DataTable village={village} db={db} cfg={cfg} activeMoo={activeMoo} onSelectMoo={handleSelectMoo} onVillageChanged={reloadVillage} onScreeningChanged={reloadScreening} />
+          <DataTable
+            village={village} db={db} cfg={cfg}
+            activeMoo={activeMoo} onSelectMoo={handleSelectMoo}
+            onVillageChanged={reloadVillage} onScreeningChanged={reloadScreening}
+          />
         </main>
       )}
 
       {activeTab === 'seamless' && (
-        <SeamlessPage />
+        // ส่ง onOpenSettings เข้าไปเพื่อให้ SeamlessPage เปิด panel ได้
+        <SeamlessPage onOpenSettings={() => openSettings('import')} />
       )}
 
-      {/* Settings Panel (dashboard only) */}
-      {activeTab === 'dashboard' && (
-        <SettingsPanel
-          open={panelOpen} initialTab={panelTab} cfg={cfg}
-          onClose={() => setPanelOpen(false)} onSave={saveCfg} onReset={resetCfg}
-          slots={syncedSlots} setSlots={setSlots}
-          vilStatus={vilStatus} setVilStatus={setVilStatus}
-          onScreeningImported={reloadScreening} onVillageImported={reloadVillage}
-        />
-      )}
+      {/* SettingsPanel — ใช้ได้ทุก tab */}
+      <SettingsPanel
+        open={panelOpen}
+        initialTab={panelTab}
+        cfg={cfg}
+        onClose={() => setPanelOpen(false)}
+        onSave={saveCfg}
+        onReset={resetCfg}
+        slots={syncedSlots}
+        setSlots={setSlots}
+        vilStatus={vilStatus}
+        setVilStatus={setVilStatus}
+        onScreeningImported={reloadScreening}
+        onVillageImported={reloadVillage}
+      />
 
       {/* Footer */}
       {activeTab === 'dashboard' && (
