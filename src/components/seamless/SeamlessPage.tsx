@@ -730,20 +730,26 @@ export function SeamlessPage({
   },[hepRowsFiltered])
 
   const monthlyData = useMemo(()=>{
-    // lookup pid → status สูงสุด (ชดเชย > ไม่ชดเชย) จาก hepRows ทั้งหมด
+    // เมื่อมี HSEND/สิทธิ filter ให้ใช้ hepRowsFiltered เพื่อจำกัด PID และ status
+    const hasExtraFilter = filterHsend.length>0||filterRights.length>0
+    const sourceRows = hasExtraFilter ? hepRowsFiltered : hepRows
+    // lookup pid → status สูงสุด (ชดเชย > ไม่ชดเชย)
     const pidStatusB:Record<string,string>={}, pidStatusC:Record<string,string>={}
-    for(const r of hepRows){
+    for(const r of sourceRows){
       if(isHepB(r.service_name)){
         if(r.status==='ชดเชย'||!pidStatusB[r.pid]) pidStatusB[r.pid]=r.status
       } else {
         if(r.status==='ชดเชย'||!pidStatusC[r.pid]) pidStatusC[r.pid]=r.status
       }
     }
-    // นับ unique PID ต่อเดือนต่อประเภท (ป้องกันนับซ้ำถ้า PID มีหลายวันในเดือนเดียว)
+    // เมื่อมี HSEND/สิทธิ filter จำกัด screeningDB เฉพาะ PID ที่ผ่าน filter
+    const activePids:Set<string>|null = hasExtraFilter ? new Set(hepRowsFiltered.map(r=>r.pid)) : null
+    // นับ unique PID ต่อเดือนต่อประเภท
     const bPids:Record<string,Set<string>>={}, cPids:Record<string,Set<string>>={}
     if(screeningDB){
       for(const byPid of Object.values(screeningDB.HBsAg)){
         for(const [pid,{dates}] of Object.entries(byPid)){
+          if(activePids&&!activePids.has(pid))continue
           for(const d of dates){
             const ds=parseDateParts(d);if(!ds)continue
             if(filterYear!=='all'&&ds.year!==filterYear)continue
@@ -754,6 +760,7 @@ export function SeamlessPage({
       }
       for(const byPid of Object.values(screeningDB.AntiHCV)){
         for(const [pid,{dates}] of Object.entries(byPid)){
+          if(activePids&&!activePids.has(pid))continue
           for(const d of dates){
             const ds=parseDateParts(d);if(!ds)continue
             if(filterYear!=='all'&&ds.year!==filterYear)continue
@@ -773,7 +780,7 @@ export function SeamlessPage({
       for(const pid of (cPids[k]??[])){const st=pidStatusC[pid];if(st==='ชดเชย')cm.comp++;else if(st==='ไม่ชดเชย')cm.notComp++;else cm.pending++}
       compMap[k]=cm
     }
-    // เส้น: ยอดโอนจริงจาก smt_records โดยใช้ transfer_date
+    // เส้น: ยอดโอนจริงจาก smt_records
     const pay:Record<string,{amount:number}>={}
     for(const s of smtRows){
       if(!s.transfer_date)continue
@@ -782,7 +789,7 @@ export function SeamlessPage({
     }
     const all=[...new Set([...Object.keys(svc),...Object.keys(pay)])].sort()
     return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:compMap[label]?.comp??0,notComp:compMap[label]?.notComp??0,pending:compMap[label]?.pending??0,amount:pay[label]?.amount??0}))
-  },[screeningDB, hepRows, filterYear, filterMonth, smtRows])
+  },[screeningDB, hepRows, hepRowsFiltered, filterYear, filterMonth, filterHsend, filterRights, smtRows])
 
   const filtered = useMemo(()=>{
     let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
