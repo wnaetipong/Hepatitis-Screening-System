@@ -77,7 +77,6 @@ function cv(row: any[], i: number): string {
 function nv(row: any[], i: number): number {
   const v = parseFloat(String(row[i] ?? '')); return isNaN(v) ? 0 : v
 }
-// แปลง Excel serial number → DD/MM/YYYY (ปีพุทธศักราช)
 function excelSerialToThaiDate(serial: number): string {
   const ms = (serial - 25569) * 86400 * 1000
   const date = new Date(ms)
@@ -86,7 +85,6 @@ function excelSerialToThaiDate(serial: number): string {
   const y = (date.getUTCFullYear() + 543).toString()
   return `${d}/${m}/${y}`
 }
-// อ่าน cell วันที่: ถ้าเป็น number (Excel serial) แปลงเป็น DD/MM/YYYY ก่อน
 function cdv(row: any[], i: number): string {
   const v = row[i]
   if (typeof v === 'number' && v > 1000) return excelSerialToThaiDate(v)
@@ -116,21 +114,16 @@ async function parseIndividual(file: File): Promise<{ rows: IndividualRow[]; err
 async function parseSummary(file: File): Promise<{ rows: SummaryRow[]; error?: string }> {
   try {
     const raw = await readXlsxRaw(file)
-    // โครงสร้าง: row0-1=รายงาน, row4=header หลัก, row7-9=sub-header
-    // data rows เริ่มตั้งแต่แถวที่ col0 ไม่ว่าง และ col5(REP NO.)ขึ้นต้น DKTP
     const rows: SummaryRow[] = []
     for (let i = 0; i < raw.length; i++) {
       const row = raw[i]
       const col0 = cv(row, 0)
-      // skip header/footer rows
       if (!col0) continue
       if (['รวม','เขต','ลำดับ'].includes(col0)) continue
-      const repNo = cv(row, 5)  // col 5 = REP NO.
+      const repNo = cv(row, 5)
       if (!repNo || !repNo.startsWith('DKTP')) continue
-      // col 4 = งวด/เลขที่เบิกจ่าย (smt_ref) — อาจว่างได้
       const smtRaw = cv(row, 4)
       const smtRef = (smtRaw === 'nan' || smtRaw === 'NaN') ? '' : smtRaw
-      // ปีงบจาก rep_no: DKTP66... → 2566
       const yyStr = repNo.substring(4, 6)
       const fiscalYear = yyStr ? `25${yyStr}` : ''
       rows.push({
@@ -144,7 +137,6 @@ async function parseSummary(file: File): Promise<{ rows: SummaryRow[]; error?: s
   } catch (e) { return { rows: [], error: String(e) } }
 }
 
-// แปลงวันที่ไทย เช่น "10 เม.ย. 2569" → "2569-04-10"
 const MONTH_MAP: Record<string, string> = {
   'ม.ค.':'01','ก.พ.':'02','มี.ค.':'03','เม.ย.':'04','พ.ค.':'05','มิ.ย.':'06',
   'ก.ค.':'07','ส.ค.':'08','ก.ย.':'09','ต.ค.':'10','พ.ย.':'11','ธ.ค.':'12',
@@ -161,14 +153,12 @@ function parseThaiDate(s: string): string {
 async function parseSmt(file: File): Promise<{ rows: SmtRow[]; error?: string }> {
   try {
     const raw = await readXlsxRaw(file)
-    // หา header row (มีคำว่า "วันที่โอน")
     let dataStart = 6
     for (let i = 0; i < Math.min(15, raw.length); i++) {
       if (raw[i].map(v => String(v ?? '')).join('|').includes('วันที่โอน')) {
         dataStart = i + 1; break
       }
     }
-    // ดึงปีงบจาก header (row 3 หรือ 4)
     let fiscalYear = ''
     for (let i = 0; i < Math.min(8, raw.length); i++) {
       const line = raw[i].map(v => String(v ?? '')).join(' ')
@@ -178,9 +168,9 @@ async function parseSmt(file: File): Promise<{ rows: SmtRow[]; error?: string }>
     const rows: SmtRow[] = []
     for (let i = dataStart; i < raw.length; i++) {
       const row = raw[i]
-      if (!cv(row, 0) && !cv(row, 1)) continue // skip empty
+      if (!cv(row, 0) && !cv(row, 1)) continue
       const ref = cv(row, 3)
-      if (!ref.toUpperCase().includes('DKTP')) continue // เฉพาะ DKTP
+      if (!ref.toUpperCase().includes('DKTP')) continue
       const dateRaw = cv(row, 1)
       rows.push({
         transfer_date: parseThaiDate(dateRaw),
@@ -204,13 +194,10 @@ const fmtNum  = (n: number) => n.toLocaleString('th-TH')
 
 function parseDateParts(d: string): { year: string; month: string } | null {
   if (!d) return null
-  // DD/MM/YYYY (Thai text)
   const sp = d.split('/')
   if (sp.length === 3) return { month: sp[1].padStart(2,'0'), year: sp[2] }
-  // YYYY-MM-DD (ISO)
   const dp = d.split('-')
   if (dp.length === 3 && dp[0].length === 4) return { month: dp[1].padStart(2,'0'), year: dp[0] }
-  // Excel serial stored as string (ข้อมูลเก่าที่ upload ก่อน fix)
   const serial = parseInt(d)
   if (!isNaN(serial) && serial > 1000) {
     const date = new Date((serial - 25569) * 86400 * 1000)
@@ -235,8 +222,21 @@ function getReasonLabel(note: string, noteOther: string): string {
 const RIGHTS_LABEL: Record<string, string> = { UCS:'บัตรทอง', WEL:'สวัสดิการข้าราชการ', SSS:'ประกันสังคม', OFC:'ต่างด้าว', LGO:'อปท.' }
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
-// ── Sub-components (chart, donut, kpi) ────────────────────────────
+// ── HSEND → unit name mapping ──────────────────────────────────────
+const HSEND_UNIT_MAP: Record<string, string[]> = {
+  '07624': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านหนองยาง'],
+  '07625': ['โรงพยาบาลส่งเสริมสุขภาพตำบลหนองปลาไหล'],
+  '07626': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านวังทับไทร'],
+  '07627': [
+    'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคลองสะแก-ป่าหวาย',
+    'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคลองสะแก-ปลาหวาย',
+  ],
+  '07628': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านยางสามต้น'],
+  '07629': ['โรงพยาบาลส่งเสริมสุขภาพตำบลหนองพระ'],
+  '11258': ['โรงพยาบาลวังทรายพูน'],
+}
 
+// ── Sub-components ─────────────────────────────────────────────────
 function KpiCard({ icon, label, val, sub, sub2, bar, barColor }: { icon:string; label:string; val:string; sub:string; sub2?:string; bar:number; barColor:string }) {
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm relative overflow-hidden">
@@ -263,7 +263,6 @@ function DonutChart({ slices, size=120 }: { slices: { label: string; value: numb
     const pct = s.value / total; const startA = angle; angle += pct * Math.PI * 2
     const x1 = cx + R * Math.cos(startA); const y1 = cy + R * Math.sin(startA)
     const x2 = cx + R * Math.cos(angle); const y2 = cy + R * Math.sin(angle)
-    // hover expand
     const midA = startA + pct * Math.PI
     const offset = hov === i ? 6 : 0
     const ox = offset * Math.cos(midA), oy = offset * Math.sin(midA)
@@ -344,7 +343,6 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
         <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" clipPath="url(#cc)"/>
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.amount/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.amount>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}</>}
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,mm=parseInt(d.label.split('/')[1]),yy=d.label.split('/')[0].slice(2),isH=hov===i;return(<g key={`lbl-${i}`}><text x={x} y={PAD.t+chartH+16} textAnchor="middle" fontSize="10.5" fill={isH?'#2563eb':'#6b7280'} fontWeight={isH?'700':'400'}>{MONTH_TH[mm]}</text><text x={x} y={PAD.t+chartH+29} textAnchor="middle" fontSize="9" fill="#c9d1d9">{yy}</text></g>)})}
-        {/* Invisible hover rects ครอบทุก slot เพื่อ capture mouse events */}
         {data.map((_d,i)=>(
           <rect key={`htgt-${i}`} x={PAD.l+slotW*i} y={PAD.t} width={slotW} height={chartH+48}
             fill="transparent" stroke="none"
@@ -358,7 +356,6 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
   )
 }
 
-// ── Compare Bar Chart ────────────────────────────────────────────
 function CompareBarChart({ items }: {
   items: { label: string; total: number; comp: number; unique: number; color: string }[]
 }) {
@@ -369,12 +366,10 @@ function CompareBarChart({ items }: {
         const notComp = item.total - item.comp
         return (
           <div key={i} className="space-y-1.5">
-            {/* label row */}
             <div className="flex items-center justify-between">
               <span className="text-[12px] font-bold text-gray-800">{item.label}</span>
               <span className="text-[11px] text-gray-400">{fmtNum(item.unique)} คน · {fmtNum(item.total)} รายการ</span>
             </div>
-            {/* stacked bar */}
             <div className="h-7 rounded-lg overflow-hidden flex bg-gray-100">
               <div className="h-full flex items-center justify-end pr-2 transition-all duration-700 min-w-0"
                 style={{width:`${pct}%`, background:item.color}}>
@@ -387,7 +382,6 @@ function CompareBarChart({ items }: {
                 </div>
               )}
             </div>
-            {/* pct row */}
             <div className="flex items-center justify-between text-[11px]">
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm" style={{background:item.color}}/><span className="text-gray-500">ชดเชย {pct.toFixed(1)}%</span></span>
@@ -428,7 +422,6 @@ function SummaryCard({ title, rows, color, bgColor }: { title:string; rows:Indiv
   )
 }
 
-// ── Upload Section ─────────────────────────────────────────────────
 function UploadZone({ label, hint, accept, onFiles, loading, progress }: { label:string; hint:string; accept:string; onFiles:(f:File[])=>void; loading:boolean; progress:string }) {
   const [drag, setDrag] = useState(false)
   const ref = useRef<HTMLInputElement>(null)
@@ -467,14 +460,9 @@ export function SeamlessPage({
   onSmtRowsChange?: (rows: any[]) => void
   screeningDB?: ScreeningDB
 }) {
-  // sub-tab
-  const [subTab, setSubTab] = useState<'individual'|'summary'|'smt'>('individual')
-
-  // data
   const [indRows,  setIndRows]  = useState<IndividualRow[]>([])
   const [_sumRows, _setSumRows] = useState<SummaryRow[]>([])
   const [_smtRows, _setSmtRows] = useState<SmtRow[]>([])
-  // ถ้ามี shared state จาก page ให้ใช้ shared แทน local
   const sumRows = (sharedSumRows as SummaryRow[] | undefined) ?? _sumRows
   const smtRows = (sharedSmtRows as SmtRow[] | undefined) ?? _smtRows
   const setSumRows = onSumRowsChange
@@ -491,20 +479,13 @@ export function SeamlessPage({
     : _setSmtRows
   const [dbLoading,setDbLoading]= useState(true)
 
-  // importing states
   const [loadingInd, setLoadingInd] = useState(false)
   const [loadingSum, setLoadingSum] = useState(false)
   const [loadingSmt, setLoadingSmt] = useState(false)
-  const [loadingSumYear, setLoadingSumYear] = useState<string|null>(null)
-  const [loadingSmtYear, setLoadingSmtYear] = useState<string|null>(null)
   const [progInd, setProgInd] = useState('')
   const [progSum, setProgSum] = useState('')
   const [progSmt, setProgSmt] = useState('')
-  // per-year lists — เพิ่มปีได้
-  const [sumYears, setSumYears] = useState(['2566','2567','2568','2569'])
-  const [smtYears, setSmtYears] = useState(['2566','2567','2568','2569'])
 
-  // filters (Individual)
   const [search,       setSearch]      = useState('')
   const [filterStatus, setFStatus]     = useState('all')
   const [filterType,   setFType]       = useState('all')
@@ -519,7 +500,6 @@ export function SeamlessPage({
 
   const showToast = useCallback((msg:string,ok:boolean)=>{ setToast({msg,ok}); setTimeout(()=>setToast(null),5000) },[])
 
-  // load all data
   useEffect(()=>{
     Promise.all([
       fetch('/api/seamless').then(r=>r.json()),
@@ -533,15 +513,12 @@ export function SeamlessPage({
     .finally(()=>setDbLoading(false))
   },[showToast])
 
-  // build lookup: rep_no → { transfer_date, transferred }
   const repToTransfer = useMemo(()=>{
-    // smt_ref → transfer info
     const smtMap: Record<string,{date:string;amount:number}> = {}
     for(const s of smtRows){
       if(!smtMap[s.smt_ref]) smtMap[s.smt_ref] = {date:s.transfer_date,amount:0}
       smtMap[s.smt_ref].amount += s.transferred
     }
-    // rep_no → smt_ref via summary
     const repMap: Record<string,{date:string;amount:number}|null> = {}
     for(const s of sumRows){
       const refs = s.smt_ref.split(',').map(r=>r.trim()).filter(Boolean)
@@ -551,7 +528,186 @@ export function SeamlessPage({
     return repMap
   },[sumRows, smtRows])
 
-  // Individual imports
+  const filterOptions = useMemo(()=>({
+    years:   [...new Set(indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)).map(r=>parseDateParts(r.service_date)?.year).filter(Boolean))].sort() as string[],
+    hsends:  [...new Set(indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)).map(r=>r.hsend||r.hmain||'').filter(Boolean))].sort(),
+    rights:  [...new Set(indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)).map(r=>r.rights).filter(Boolean))].sort(),
+    sources: [...new Set(indRows.map(r=>r.source_file))],
+  }),[indRows])
+
+  const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
+
+  const hepRowsFiltered = useMemo(()=>{
+    let r=hepRows
+    if(filterHsend.length>0)  r=r.filter(x=>filterHsend.includes(x.hsend||x.hmain||''))
+    if(filterRights.length>0) r=r.filter(x=>filterRights.includes(x.rights))
+    if(filterYear!=='all')    r=r.filter(x=>parseDateParts(x.service_date)?.year===filterYear)
+    if(filterMonth!=='all')   r=r.filter(x=>parseDateParts(x.service_date)?.month===filterMonth)
+    return r
+  },[hepRows,filterHsend,filterRights,filterYear,filterMonth])
+
+  const stats = useMemo(()=>{
+    const hepB=hepRowsFiltered.filter(r=>isHepB(r.service_name))
+    const hepC=hepRowsFiltered.filter(r=>isHepC(r.service_name))
+    const comp=hepRowsFiltered.filter(r=>r.status==='ชดเชย')
+    const notComp=hepRowsFiltered.filter(r=>r.status==='ไม่ชดเชย')
+    const reasonMap:Record<string,number>={}
+    for(const r of notComp){const key=getReasonLabel(r.note,r.note_other);reasonMap[key]=(reasonMap[key]||0)+1}
+    return {
+      total:hepRowsFiltered.length, hepB:hepB.length, hepC:hepC.length,
+      comp:comp.length, notComp:notComp.length,
+      totalComp:comp.reduce((a,b)=>a+b.compensated,0),
+      totalClaim:hepRowsFiltered.reduce((a,b)=>a+b.total_claim,0),
+      uniqueB:new Set(hepB.map(r=>r.pid)).size, uniqueC:new Set(hepC.map(r=>r.pid)).size,
+      reasons:Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,5),
+    }
+  },[hepRowsFiltered])
+
+  // ── monthlyData (ใหม่) ──────────────────────────────────────────
+  // บาร์ บี/ซี มาจาก screeningDB โดยตรง กรองด้วย unit ตาม HSEND mapping
+  // comp/notComp/pending join กับ seamless_records
+  const monthlyData = useMemo(()=>{
+    // 1. หา unit names ที่ต้อง filter จาก HSEND ที่เลือก
+    const allowedUnits: Set<string> | null =
+      filterHsend.length > 0
+        ? new Set(filterHsend.flatMap(h => HSEND_UNIT_MAP[h] ?? []))
+        : null
+
+    // 2. สร้าง pidStatus จาก seamless_records สำหรับ classify comp/notComp/pending
+    const pidStatusB: Record<string, string> = {}
+    const pidStatusC: Record<string, string> = {}
+    for (const r of hepRowsFiltered) {
+      if (isHepB(r.service_name)) {
+        if (r.status === 'ชดเชย' || !pidStatusB[r.pid]) pidStatusB[r.pid] = r.status
+      } else {
+        if (r.status === 'ชดเชย' || !pidStatusC[r.pid]) pidStatusC[r.pid] = r.status
+      }
+    }
+
+    // 3. นับ unique PID ต่อเดือนจาก screeningDB โดยตรง (ไม่พึ่ง seamless_records)
+    const bPids: Record<string, Set<string>> = {}
+    const cPids: Record<string, Set<string>> = {}
+
+    const unitAllowed = (unit: string) =>
+      allowedUnits === null || allowedUnits.has(unit)
+
+    if (screeningDB) {
+      // HBsAg
+      for (const byPid of Object.values(screeningDB.HBsAg)) {
+        for (const [pid, { dates, unit }] of Object.entries(byPid)) {
+          if (!unitAllowed(unit)) continue
+          if (filterRights.length > 0) {
+            const row = hepRows.find(r => r.pid === pid)
+            if (!row || !filterRights.includes(row.rights)) continue
+          }
+          for (const d of dates) {
+            const ds = parseDateParts(d)
+            if (!ds) continue
+            if (filterYear !== 'all' && ds.year !== filterYear) continue
+            if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+            const k = `${ds.year}/${ds.month}`
+            if (!bPids[k]) bPids[k] = new Set()
+            bPids[k].add(pid)
+          }
+        }
+      }
+      // AntiHCV
+      for (const byPid of Object.values(screeningDB.AntiHCV)) {
+        for (const [pid, { dates, unit }] of Object.entries(byPid)) {
+          if (!unitAllowed(unit)) continue
+          if (filterRights.length > 0) {
+            const row = hepRows.find(r => r.pid === pid)
+            if (!row || !filterRights.includes(row.rights)) continue
+          }
+          for (const d of dates) {
+            const ds = parseDateParts(d)
+            if (!ds) continue
+            if (filterYear !== 'all' && ds.year !== filterYear) continue
+            if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+            const k = `${ds.year}/${ds.month}`
+            if (!cPids[k]) cPids[k] = new Set()
+            cPids[k].add(pid)
+          }
+        }
+      }
+    }
+
+    // 4. classify comp/notComp/pending ต่อเดือน
+    const compMap: Record<string, { comp: number; notComp: number; pending: number }> = {}
+    const allMonths = new Set([...Object.keys(bPids), ...Object.keys(cPids)])
+    for (const k of allMonths) {
+      const cm = { comp: 0, notComp: 0, pending: 0 }
+      for (const pid of bPids[k] ?? []) {
+        const st = pidStatusB[pid]
+        if (st === 'ชดเชย') cm.comp++
+        else if (st === 'ไม่ชดเชย') cm.notComp++
+        else cm.pending++
+      }
+      for (const pid of cPids[k] ?? []) {
+        const st = pidStatusC[pid]
+        if (st === 'ชดเชย') cm.comp++
+        else if (st === 'ไม่ชดเชย') cm.notComp++
+        else cm.pending++
+      }
+      compMap[k] = cm
+    }
+
+    // 5. เส้นยอดชดเชย (฿) มาจาก seamless_records เหมือนเดิม
+    const pay: Record<string, { amount: number }> = {}
+    for (const r of hepRowsFiltered) {
+      if (!r.service_date) continue
+      const ds = parseDateParts(r.service_date)
+      if (!ds) continue
+      if (filterYear !== 'all' && ds.year !== filterYear) continue
+      if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+      const k = `${ds.year}/${ds.month}`
+      if (!pay[k]) pay[k] = { amount: 0 }
+      pay[k].amount += r.compensated
+    }
+
+    // 6. รวมและ sort
+    const all = [...allMonths].sort()
+    return all.map(label => ({
+      label,
+      b:       bPids[label]?.size ?? 0,
+      c:       cPids[label]?.size ?? 0,
+      comp:    compMap[label]?.comp ?? 0,
+      notComp: compMap[label]?.notComp ?? 0,
+      pending: compMap[label]?.pending ?? 0,
+      amount:  pay[label]?.amount ?? 0,
+    }))
+  },[
+    screeningDB,
+    hepRows,
+    hepRowsFiltered,
+    filterYear,
+    filterMonth,
+    filterHsend,
+    filterRights,
+  ])
+
+  const filtered = useMemo(()=>{
+    let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
+    if(filterStatus!=='all')r=r.filter(x=>x.status===filterStatus)
+    if(search.trim()){const q=search.trim().toLowerCase();r=r.filter(x=>x.name.toLowerCase().includes(q)||x.pid.includes(q)||x.rep_no.toLowerCase().includes(q))}
+    return r
+  },[hepRowsFiltered,filterType,filterStatus,search])
+
+  const totalPages=Math.ceil(filtered.length/PG)
+  const pageRows=filtered.slice((page-1)*PG,page*PG)
+  const hasFilter=filterHsend.length>0||filterRights.length>0||filterYear!=='all'||filterMonth!=='all'
+  const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFYear('all');setFMonth('all');setPage(1)}
+
+  const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
+  const DONUT_RIGHTS=[...new Set(hepRowsFiltered.map(r=>r.rights).filter(Boolean))].slice(0,5).map((key,i)=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:['#2563eb','#059669','#f59e0b','#8b5cf6','#06b6d4'][i]??'#9ca3af'}))
+
+  function exportCsv(rows:IndividualRow[]) {
+    const h=['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','HSEND','วันที่ส่ง','วันที่บริการ','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอนเงิน','วันโอน','หมายเหตุ']
+    const d=rows.map((r,i)=>{const tr=repToTransfer[r.rep_no];return[i+1,r.rep_no,r.trans_id,r.hn,r.pid,r.name,r.rights,r.hmain,r.hsend,r.send_date,r.service_date,r.service_name,r.total_claim,r.compensated,r.status,tr?'โอนแล้ว':'รอโอน',tr?.date??'',getReasonLabel(r.note,r.note_other)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')})
+    const b=new Blob(['\uFEFF'+[h.join(','),...d].join('\n')],{type:'text/csv;charset=utf-8;'})
+    const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`seamless_${new Date().toISOString().split('T')[0]}.csv`;a.click();URL.revokeObjectURL(u)
+  }
+
   const handleIndFiles = useCallback(async(files:File[])=>{
     const valid = files.filter(f=>/\.(xlsx|xls)$/i.test(f.name))
     if(!valid.length){showToast('กรุณาเลือกไฟล์ .xlsx',false);return}
@@ -610,67 +766,6 @@ export function SeamlessPage({
     setProgSmt('');setLoadingSmt(false)
   },[showToast])
 
-  const handleSumFilesYear = useCallback(async(files:File[], year:string)=>{
-    const valid=files.filter(f=>/\.(xlsx|xls)$/i.test(f.name))
-    if(!valid.length){showToast('กรุณาเลือกไฟล์ .xlsx',false);return}
-    setLoadingSumYear(year)
-    for(const f of valid){
-      setProgSum(`parse: ${f.name}`)
-      const {rows:parsed,error}=await parseSummary(f)
-      if(error){showToast(`อ่านไม่สำเร็จ: ${error}`,false);continue}
-      // กรองเฉพาะปีที่เลือก หรือ auto-detect ปีจากไฟล์
-      const toUpload = parsed.length > 0 ? parsed.map(r=>({...r, fiscal_year: year})) : []
-      if(!toUpload.length){showToast('ไม่พบข้อมูลในไฟล์',false);continue}
-      const j=await fetch('/api/rep-summary',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:toUpload})}).then(r=>r.json())
-      if(j.ok){setSumRows(prev=>{const ex=new Set(prev.map(r=>r.rep_no));return[...prev,...toUpload.filter(r=>!ex.has(r.rep_no))]}); showToast(`✓ ปี ${year}: เพิ่ม ${fmtNum(j.imported??0)} batch`,true)}
-      else showToast(j.error,false)
-    }
-    setLoadingSumYear(null)
-  },[showToast])
-
-  const handleSmtFilesYear = useCallback(async(files:File[], year:string)=>{
-    const valid=files.filter(f=>/\.(xlsx|xls)$/i.test(f.name))
-    if(!valid.length){showToast('กรุณาเลือกไฟล์ .xlsx',false);return}
-    setLoadingSmtYear(year)
-    for(const f of valid){
-      setProgSmt(`parse: ${f.name}`)
-      const {rows:parsed,error}=await parseSmt(f)
-      if(error){showToast(`อ่านไม่สำเร็จ: ${error}`,false);continue}
-      const toUpload=parsed.map(r=>({...r,fiscal_year:year}))
-      if(!toUpload.length){showToast(`ไม่พบรายการ DKTP`,false);continue}
-      const BATCH=200; let total=0
-      for(let i=0;i<toUpload.length;i+=BATCH){
-        const chunk=toUpload.slice(i,i+BATCH)
-        const j=await fetch('/api/smt',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({rows:chunk})}).then(r=>r.json())
-        if(j.ok){total+=j.imported??0;setSmtRows(prev=>{const ex=new Set(prev.map(r=>`${r.smt_ref}|${r.batch_no}|${r.fund_sub}`));return[...prev,...chunk.filter(r=>!ex.has(`${r.smt_ref}|${r.batch_no}|${r.fund_sub}`))]})}
-        else{showToast(j.error,false);break}
-      }
-      showToast(`✓ ปี ${year}: เพิ่ม ${fmtNum(total)} DKTP`,total>0)
-    }
-    setLoadingSmtYear(null)
-  },[showToast])
-
-  const handleClearYear = useCallback(async(type:'summary'|'smt', year:string)=>{
-    if(!window.confirm(`ล้างข้อมูลปีงบ ${year} ของ ${type==='summary'?'REP Summary':'SMT'}?
-ข้อมูลจะถูกลบออกจาก Supabase`)) return
-    const url=type==='summary'?`/api/rep-summary?year=${year}`:`/api/smt?year=${year}`
-    const j=await fetch(url,{method:'DELETE'}).then(r=>r.json())
-    if(j.ok){
-      if(type==='summary') setSumRows(prev=>prev.filter(r=>r.fiscal_year!==year))
-      else setSmtRows(prev=>prev.filter(r=>r.fiscal_year!==year))
-      showToast(`✓ ล้างข้อมูลปีงบ ${year} เรียบร้อย`,true)
-    } else showToast(j.error,false)
-  },[showToast])
-
-  const handleAddYear = useCallback((type:'summary'|'smt')=>{
-    const lastYear = type==='summary'
-      ? (sumYears[sumYears.length-1]??'2569')
-      : (smtYears[smtYears.length-1]??'2569')
-    const nextYear = String(parseInt(lastYear)+1)
-    if(type==='summary') setSumYears(prev=>[...prev,nextYear])
-    else setSmtYears(prev=>[...prev,nextYear])
-  },[sumYears,smtYears])
-
   const handleClear = useCallback(async(type:'individual'|'summary'|'smt')=>{
     setConfirm(null)
     const url = type==='individual'?'/api/seamless':type==='summary'?'/api/rep-summary':'/api/smt'
@@ -683,145 +778,6 @@ export function SeamlessPage({
     } else showToast(j.error,false)
   },[showToast])
 
-  // ── Computed (Individual) ────────────────────────────────────────
-  const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
-
-  // year lists (sync กับ state ที่มีข้อมูลจริงด้วย)
-  const SUM_YEARS = useMemo(()=>{
-    const fromData=[...new Set(sumRows.map(r=>r.fiscal_year).filter(Boolean))].sort()
-    return [...new Set([...sumYears,...fromData])].sort()
-  },[sumRows,sumYears])
-  const SMT_YEARS = useMemo(()=>{
-    const fromData=[...new Set(smtRows.map(r=>r.fiscal_year).filter(Boolean))].sort()
-    return [...new Set([...smtYears,...fromData])].sort()
-  },[smtRows,smtYears])
-
-  const filterOptions = useMemo(()=>({
-    years:   [...new Set(hepRows.map(r=>parseDateParts(r.service_date)?.year).filter(Boolean))].sort() as string[],
-    hsends:  [...new Set(hepRows.map(r=>r.hsend||r.hmain||'').filter(Boolean))].sort(),
-    rights:  [...new Set(hepRows.map(r=>r.rights).filter(Boolean))].sort(),
-    sources: [...new Set(indRows.map(r=>r.source_file))],
-  }),[hepRows, indRows])
-
-  const hepRowsFiltered = useMemo(()=>{
-    let r=hepRows
-    if(filterHsend.length>0)  r=r.filter(x=>filterHsend.includes(x.hsend||x.hmain||''))
-    if(filterRights.length>0) r=r.filter(x=>filterRights.includes(x.rights))
-    if(filterYear!=='all')    r=r.filter(x=>parseDateParts(x.service_date)?.year===filterYear)
-    if(filterMonth!=='all')   r=r.filter(x=>parseDateParts(x.service_date)?.month===filterMonth)
-    return r
-  },[hepRows,filterHsend,filterRights,filterYear,filterMonth])
-
-  const stats = useMemo(()=>{
-    const hepB=hepRowsFiltered.filter(r=>isHepB(r.service_name))
-    const hepC=hepRowsFiltered.filter(r=>isHepC(r.service_name))
-    const comp=hepRowsFiltered.filter(r=>r.status==='ชดเชย')
-    const notComp=hepRowsFiltered.filter(r=>r.status==='ไม่ชดเชย')
-    const reasonMap:Record<string,number>={}
-    for(const r of notComp){const key=getReasonLabel(r.note,r.note_other);reasonMap[key]=(reasonMap[key]||0)+1}
-    return {
-      total:hepRowsFiltered.length, hepB:hepB.length, hepC:hepC.length,
-      comp:comp.length, notComp:notComp.length,
-      totalComp:comp.reduce((a,b)=>a+b.compensated,0),
-      totalClaim:hepRowsFiltered.reduce((a,b)=>a+b.total_claim,0),
-      uniqueB:new Set(hepB.map(r=>r.pid)).size, uniqueC:new Set(hepC.map(r=>r.pid)).size,
-      reasons:Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,5),
-    }
-  },[hepRowsFiltered])
-
-  const monthlyData = useMemo(()=>{
-    const hasExtraFilter = filterHsend.length>0||filterRights.length>0
-    // activePids: กรองเฉพาะ HSEND/สิทธิ (ไม่กรอง year/month) เพื่อให้เห็นทุกเดือนที่ผู้รับบริการมี screenings
-    const activePids:Set<string>|null = hasExtraFilter
-      ? new Set(hepRows.filter(r=>{
-          if(filterHsend.length>0&&!filterHsend.includes(r.hsend||r.hmain||''))return false
-          if(filterRights.length>0&&!filterRights.includes(r.rights))return false
-          return true
-        }).map(r=>r.pid))
-      : null
-    // status lookup: ใช้ hepRowsFiltered (ทุก filter) เพื่อ classify ชดเชย/ไม่ชดเชย
-    const pidStatusB:Record<string,string>={}, pidStatusC:Record<string,string>={}
-    for(const r of (hasExtraFilter?hepRowsFiltered:hepRows)){
-      if(isHepB(r.service_name)){
-        if(r.status==='ชดเชย'||!pidStatusB[r.pid]) pidStatusB[r.pid]=r.status
-      } else {
-        if(r.status==='ชดเชย'||!pidStatusC[r.pid]) pidStatusC[r.pid]=r.status
-      }
-    }
-    // นับ unique PID ต่อเดือนต่อประเภท จาก screenings table
-    const bPids:Record<string,Set<string>>={}, cPids:Record<string,Set<string>>={}
-    if(screeningDB){
-      for(const byPid of Object.values(screeningDB.HBsAg)){
-        for(const [pid,{dates}] of Object.entries(byPid)){
-          if(activePids&&!activePids.has(pid))continue
-          for(const d of dates){
-            const ds=parseDateParts(d);if(!ds)continue
-            if(filterYear!=='all'&&ds.year!==filterYear)continue
-            if(filterMonth!=='all'&&ds.month!==filterMonth)continue
-            const k=`${ds.year}/${ds.month}`;if(!bPids[k])bPids[k]=new Set();bPids[k].add(pid)
-          }
-        }
-      }
-      for(const byPid of Object.values(screeningDB.AntiHCV)){
-        for(const [pid,{dates}] of Object.entries(byPid)){
-          if(activePids&&!activePids.has(pid))continue
-          for(const d of dates){
-            const ds=parseDateParts(d);if(!ds)continue
-            if(filterYear!=='all'&&ds.year!==filterYear)continue
-            if(filterMonth!=='all'&&ds.month!==filterMonth)continue
-            const k=`${ds.year}/${ds.month}`;if(!cPids[k])cPids[k]=new Set();cPids[k].add(pid)
-          }
-        }
-      }
-    }
-    // svc + compMap
-    const svc:Record<string,{b:number;c:number}>={}, compMap:Record<string,{comp:number;notComp:number;pending:number}>={}
-    const allMonths=new Set([...Object.keys(bPids),...Object.keys(cPids)])
-    for(const k of allMonths){
-      svc[k]={b:bPids[k]?.size??0, c:cPids[k]?.size??0}
-      const cm={comp:0,notComp:0,pending:0}
-      for(const pid of (bPids[k]??[])){const st=pidStatusB[pid];if(st==='ชดเชย')cm.comp++;else if(st==='ไม่ชดเชย')cm.notComp++;else cm.pending++}
-      for(const pid of (cPids[k]??[])){const st=pidStatusC[pid];if(st==='ชดเชย')cm.comp++;else if(st==='ไม่ชดเชย')cm.notComp++;else cm.pending++}
-      compMap[k]=cm
-    }
-    // เส้น: ยอดชดเชยรวมต่อเดือน (จาก service_date ของผู้รับบริการ ตาม filter)
-    const pay:Record<string,{amount:number}>={}
-    const paySource = hasExtraFilter ? hepRowsFiltered : hepRows
-    for(const r of paySource){
-      if(!r.service_date)continue
-      const ds=parseDateParts(r.service_date);if(!ds)continue
-      if(filterYear!=='all'&&ds.year!==filterYear)continue
-      if(filterMonth!=='all'&&ds.month!==filterMonth)continue
-      const k=`${ds.year}/${ds.month}`;if(!pay[k])pay[k]={amount:0};pay[k].amount+=r.compensated
-    }
-    // แสดงเฉพาะเดือนที่มีการรับบริการ (ไม่รวมเดือนที่มีแค่ SMT โอน)
-    const all=[...Object.keys(svc)].sort()
-    return all.map(label=>({label,b:svc[label]?.b??0,c:svc[label]?.c??0,comp:compMap[label]?.comp??0,notComp:compMap[label]?.notComp??0,pending:compMap[label]?.pending??0,amount:pay[label]?.amount??0}))
-  },[screeningDB, hepRows, hepRowsFiltered, filterYear, filterMonth, filterHsend, filterRights])
-
-  const filtered = useMemo(()=>{
-    let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
-    if(filterStatus!=='all')r=r.filter(x=>x.status===filterStatus)
-    if(search.trim()){const q=search.trim().toLowerCase();r=r.filter(x=>x.name.toLowerCase().includes(q)||x.pid.includes(q)||x.rep_no.toLowerCase().includes(q))}
-    return r
-  },[hepRowsFiltered,filterType,filterStatus,search])
-
-  const totalPages=Math.ceil(filtered.length/PG)
-  const pageRows=filtered.slice((page-1)*PG,page*PG)
-  const hasFilter=filterHsend.length>0||filterRights.length>0||filterYear!=='all'||filterMonth!=='all'
-  const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFYear('all');setFMonth('all');setPage(1)}
-
-  const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
-  const DONUT_RIGHTS=[...new Set(hepRowsFiltered.map(r=>r.rights).filter(Boolean))].slice(0,5).map((key,i)=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:['#2563eb','#059669','#f59e0b','#8b5cf6','#06b6d4'][i]??'#9ca3af'}))
-
-  function exportCsv(rows:IndividualRow[]) {
-    const h=['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','HSEND','วันที่ส่ง','วันที่บริการ','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอนเงิน','วันโอน','หมายเหตุ']
-    const d=rows.map((r,i)=>{const tr=repToTransfer[r.rep_no];return[i+1,r.rep_no,r.trans_id,r.hn,r.pid,r.name,r.rights,r.hmain,r.hsend,r.send_date,r.service_date,r.service_name,r.total_claim,r.compensated,r.status,tr?'โอนแล้ว':'รอโอน',tr?.date??'',getReasonLabel(r.note,r.note_other)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')})
-    const b=new Blob(['\uFEFF'+[h.join(','),...d].join('\n')],{type:'text/csv;charset=utf-8;'})
-    const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`seamless_${new Date().toISOString().split('T')[0]}.csv`;a.click();URL.revokeObjectURL(u)
-  }
-
-  // ── Loading ──────────────────────────────────────────────────────
   if (dbLoading) return (
     <div className="flex flex-col items-center justify-center py-32 gap-4">
       <div className="w-10 h-10 border-[3px] border-gray-200 border-t-blue-600 rounded-full animate-spin"/>
@@ -831,10 +787,8 @@ export function SeamlessPage({
 
   return (
     <div className="max-w-[1440px] mx-auto px-8 py-7">
-      {/* Toast */}
       {toast&&<div className={cn('fixed bottom-7 right-7 z-[9999] flex items-center gap-3 px-5 py-3.5 rounded-xl border text-sm shadow-xl',toast.ok?'bg-emerald-50 border-emerald-200 text-emerald-800':'bg-red-50 border-red-200 text-red-800')}><span className={cn('w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold text-white flex-shrink-0',toast.ok?'bg-emerald-500':'bg-red-500')}>{toast.ok?'✓':'✕'}</span>{toast.msg}</div>}
 
-      {/* Confirm dialog */}
       {confirmClear&&<div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm z-[999] flex items-center justify-center p-6" onClick={()=>setConfirm(null)}><div className="bg-white rounded-2xl shadow-2xl w-full max-w-[380px] p-7" onClick={e=>e.stopPropagation()}><div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4"><svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2" className="w-6 h-6"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></div><div className="text-center mb-5"><div className="text-[16px] font-bold text-gray-900 mb-1">ยืนยันการล้างข้อมูล</div><div className="text-[13px] text-gray-500">ลบข้อมูล {confirmClear==='individual'?'REP Individual':confirmClear==='summary'?'REP Summary':'SMT'} ทั้งหมด</div><div className="text-[11px] text-red-500 mt-2">⚠ ไม่สามารถยกเลิกได้</div></div><div className="flex gap-2 justify-center"><button onClick={()=>setConfirm(null)} className="px-5 py-2 text-[12.5px] font-semibold border border-gray-200 rounded-lg text-gray-500">ยกเลิก</button><button onClick={()=>handleClear(confirmClear)} className="px-5 py-2 text-[12.5px] font-bold bg-red-600 hover:bg-red-700 text-white rounded-lg">ล้างข้อมูล</button></div></div></div>}
 
       {/* Header */}
@@ -846,163 +800,163 @@ export function SeamlessPage({
         </div>
       </div>
 
+      {/* Upload zones */}
+      {indRows.length === 0 && (
+        <div className="grid grid-cols-3 gap-4 mb-6">
+          <UploadZone label="REP Individual" hint="ไฟล์ Excel จาก Seamless DMIS" accept=".xlsx,.xls" onFiles={handleIndFiles} loading={loadingInd} progress={progInd}/>
+          <UploadZone label="REP Summary" hint="ไฟล์สรุปการเบิกจ่าย DKTP" accept=".xlsx,.xls" onFiles={handleSumFiles} loading={loadingSum} progress={progSum}/>
+          <UploadZone label="SMT Transfer" hint="ไฟล์ Smart Money Transfer" accept=".xlsx,.xls" onFiles={handleSmtFiles} loading={loadingSmt} progress={progSmt}/>
+        </div>
+      )}
 
-
-      {/* ── Individual Content ── */}
-      <>
-
-
-          {indRows.length>0&&<>
-            {/* Filter bar */}
-            <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 mb-5 shadow-sm">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mr-1">กรองข้อมูล:</span>
-                <select value={filterYear} onChange={e=>{setFYear(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-                  <option value="all">ทุกปี</option>
-                  {filterOptions.years.map(y=><option key={y} value={y}>ปี {y}</option>)}
-                </select>
-                <select value={filterMonth} onChange={e=>{setFMonth(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-                  <option value="all">ทุกเดือน</option>
-                  {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={String(m).padStart(2,'0')}>{MONTH_TH[m]}</option>)}
-                </select>
-                {/* HSEND inline checkboxes */}
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-[11px] text-gray-400 font-semibold">HSEND:</span>
-                  {filterOptions.hsends.map(h=>(
-                    <button key={h} type="button"
-                      onClick={()=>{setFHsend(p=>p.includes(h)?p.filter(v=>v!==h):[...p,h]);setPage(1)}}
-                      className={cn('px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all',
-                        filterHsend.includes(h)?'bg-blue-600 border-blue-600 text-white':'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
-                      {h}
-                    </button>
-                  ))}
-                  {filterHsend.length>0&&<button type="button" onClick={()=>{setFHsend([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
-                </div>
-                <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-                  <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
-                  {filterOptions.rights.map(r=><option key={r} value={r}>{filterRights.includes(r)?'✓ ':''}{RIGHTS_LABEL[r]??r}</option>)}
-                </select>
-                {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
-              </div>
-              {hasFilter&&<div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
-                {filterYear!=='all'&&<Chip label={`ปี ${filterYear}`} onRemove={()=>{setFYear('all');setPage(1)}} color="purple"/>}
-                {filterMonth!=='all'&&<Chip label={`เดือน ${MONTH_TH[parseInt(filterMonth)]}`} onRemove={()=>{setFMonth('all');setPage(1)}} color="purple"/>}
-{/* HSEND handled via inline buttons above */}
-                {filterRights.map(r=><Chip key={r} label={RIGHTS_LABEL[r]??r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
-              </div>}
+      {indRows.length > 0 && <>
+        {/* Filter bar */}
+        <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 mb-5 shadow-sm">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mr-1">กรองข้อมูล:</span>
+            <select value={filterYear} onChange={e=>{setFYear(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
+              <option value="all">ทุกปี</option>
+              {filterOptions.years.map(y=><option key={y} value={y}>ปี {y}</option>)}
+            </select>
+            <select value={filterMonth} onChange={e=>{setFMonth(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
+              <option value="all">ทุกเดือน</option>
+              {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={String(m).padStart(2,'0')}>{MONTH_TH[m]}</option>)}
+            </select>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-gray-400 font-semibold">HSEND:</span>
+              {Object.keys(HSEND_UNIT_MAP).map(h=>(
+                <button key={h} type="button"
+                  onClick={()=>{setFHsend(p=>p.includes(h)?p.filter(v=>v!==h):[...p,h]);setPage(1)}}
+                  className={cn('px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all',
+                    filterHsend.includes(h)?'bg-blue-600 border-blue-600 text-white':'bg-white border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600')}>
+                  {h}
+                </button>
+              ))}
+              {filterHsend.length>0&&<button type="button" onClick={()=>{setFHsend([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
             </div>
+            <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
+              <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
+              {filterOptions.rights.map(r=><option key={r} value={r}>{filterRights.includes(r)?'✓ ':''}{RIGHTS_LABEL[r]??r}</option>)}
+            </select>
+            {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
+          </div>
+          {hasFilter&&<div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
+            {filterYear!=='all'&&<Chip label={`ปี ${filterYear}`} onRemove={()=>{setFYear('all');setPage(1)}} color="purple"/>}
+            {filterMonth!=='all'&&<Chip label={`เดือน ${MONTH_TH[parseInt(filterMonth)]}`} onRemove={()=>{setFMonth('all');setPage(1)}} color="purple"/>}
+            {filterRights.map(r=><Chip key={r} label={RIGHTS_LABEL[r]??r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
+          </div>}
+        </div>
 
-            {/* KPI cards */}
-            <div className="grid grid-cols-4 gap-4 mb-5">
-              <KpiCard icon="🔬" label="บริการตับอักเสบ บี" val={fmtNum(stats.hepB)} sub={`${fmtNum(stats.uniqueB)} คน`} barColor="#2563eb" bar={stats.total?stats.hepB/stats.total:0}/>
-              <KpiCard icon="🧬" label="บริการตับอักเสบ ซี" val={fmtNum(stats.hepC)} sub={`${fmtNum(stats.uniqueC)} คน`} barColor="#0891b2" bar={stats.total?stats.hepC/stats.total:0}/>
-              <KpiCard icon="✅" label="ได้รับการชดเชย" val={`${fmtNum(stats.comp)} รายการ`} sub={`${stats.total?(stats.comp/stats.total*100).toFixed(1):0}%`} sub2={`฿${fmtBaht(stats.totalComp)}`} barColor="#059669" bar={stats.total?stats.comp/stats.total:0}/>
-              <KpiCard icon="❌" label="ไม่ได้รับการชดเชย" val={`${fmtNum(stats.notComp)} รายการ`} sub={`฿${fmtBaht(stats.totalClaim-stats.totalComp)}`} barColor="#dc2626" bar={stats.total?stats.notComp/stats.total:0}/>
-            </div>
+        {/* KPI cards */}
+        <div className="grid grid-cols-4 gap-4 mb-5">
+          <KpiCard icon="🔬" label="บริการตับอักเสบ บี" val={fmtNum(stats.hepB)} sub={`${fmtNum(stats.uniqueB)} คน`} barColor="#2563eb" bar={stats.total?stats.hepB/stats.total:0}/>
+          <KpiCard icon="🧬" label="บริการตับอักเสบ ซี" val={fmtNum(stats.hepC)} sub={`${fmtNum(stats.uniqueC)} คน`} barColor="#0891b2" bar={stats.total?stats.hepC/stats.total:0}/>
+          <KpiCard icon="✅" label="ได้รับการชดเชย" val={`${fmtNum(stats.comp)} รายการ`} sub={`${stats.total?(stats.comp/stats.total*100).toFixed(1):0}%`} sub2={`฿${fmtBaht(stats.totalComp)}`} barColor="#059669" bar={stats.total?stats.comp/stats.total:0}/>
+          <KpiCard icon="❌" label="ไม่ได้รับการชดเชย" val={`${fmtNum(stats.notComp)} รายการ`} sub={`฿${fmtBaht(stats.totalClaim-stats.totalComp)}`} barColor="#dc2626" bar={stats.total?stats.notComp/stats.total:0}/>
+        </div>
 
-            {/* Monthly chart (full width) */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 pb-3 shadow-sm mb-5">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-2 h-2 rounded-full bg-indigo-500"/>
-                <span className="font-bold text-gray-900 text-[13.5px]">แนวโน้มรายเดือน</span>
-                <span className="ml-2 text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{monthlyData.length} เดือน</span>
-              </div>
-              <div className="w-full overflow-x-auto">{monthlyData.length>0?<MonthlyChart data={monthlyData} hasSmt={smtRows.length>0}/>:<div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>}</div>
-            </div>
+        {/* Monthly chart */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 pb-3 shadow-sm mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <div className="w-2 h-2 rounded-full bg-indigo-500"/>
+            <span className="font-bold text-gray-900 text-[13.5px]">แนวโน้มรายเดือน</span>
+            <span className="ml-2 text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">{monthlyData.length} เดือน</span>
+          </div>
+          <div className="w-full overflow-x-auto">{monthlyData.length>0?<MonthlyChart data={monthlyData} hasSmt={smtRows.length>0}/>:<div className="flex items-center justify-center h-52 text-gray-300 text-sm">ไม่มีข้อมูล</div>}</div>
+        </div>
 
-            {/* Donut row */}
-            {/* การตรวจคัดกรองไวรัสตับอักเสบ บี vs ซี + สิทธิ */}
-            <div className="grid grid-cols-2 gap-4 mb-5">
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="w-2 h-2 rounded-full bg-indigo-500"/>
-                  <span className="font-bold text-gray-900 text-[13px]">การตรวจคัดกรองไวรัสตับอักเสบ</span>
-                </div>
-                <CompareBarChart items={[
-                  {label:'ไวรัสตับอักเสบ บี (HBsAg)', total:stats.hepB, comp:hepRowsFiltered.filter(r=>isHepB(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueB, color:'#2563eb'},
-                  {label:'ไวรัสตับอักเสบ ซี (Anti-HCV)', total:stats.hepC, comp:hepRowsFiltered.filter(r=>isHepC(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueC, color:'#0891b2'},
-                ]}/>
-                <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-[11.5px]">
-                  <div className="flex justify-between"><span className="text-gray-500">รวมทั้งหมด</span><span className="font-bold">{fmtNum(stats.total)} รายการ</span></div>
-                  <div className="flex justify-between"><span className="text-gray-500">ยอดชดเชย</span><span className="font-bold text-emerald-600">฿{fmtBaht(stats.totalComp)}</span></div>
-                </div>
-              </div>
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div>
-                <DonutChart size={130} slices={DONUT_RIGHTS}/>
-              </div>
+        {/* Donut row */}
+        <div className="grid grid-cols-2 gap-4 mb-5">
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-2 h-2 rounded-full bg-indigo-500"/>
+              <span className="font-bold text-gray-900 text-[13px]">การตรวจคัดกรองไวรัสตับอักเสบ</span>
             </div>
+            <CompareBarChart items={[
+              {label:'ไวรัสตับอักเสบ บี (HBsAg)', total:stats.hepB, comp:hepRowsFiltered.filter(r=>isHepB(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueB, color:'#2563eb'},
+              {label:'ไวรัสตับอักเสบ ซี (Anti-HCV)', total:stats.hepC, comp:hepRowsFiltered.filter(r=>isHepC(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueC, color:'#0891b2'},
+            ]}/>
+            <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-[11.5px]">
+              <div className="flex justify-between"><span className="text-gray-500">รวมทั้งหมด</span><span className="font-bold">{fmtNum(stats.total)} รายการ</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">ยอดชดเชย</span><span className="font-bold text-emerald-600">฿{fmtBaht(stats.totalComp)}</span></div>
+            </div>
+          </div>
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div>
+            <DonutChart size={130} slices={DONUT_RIGHTS}/>
+          </div>
+        </div>
 
-            {/* Summary + Reasons */}
-            <div className="grid grid-cols-3 gap-4 mb-5">
-              <SummaryCard title="ตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff"/>
-              <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
-              <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-red-500"/><span className="font-bold text-gray-900 text-[13px]">สาเหตุไม่ชดเชย ({fmtNum(stats.notComp)})</span></div>
-                <DonutChart size={110} slices={DONUT_REASONS}/>
-                <div className="mt-3 space-y-1.5">{stats.reasons.map(([label,val],i)=>(<div key={i} className="flex items-start gap-2"><div className="w-2 h-2 rounded-sm mt-1 flex-shrink-0" style={{background:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]}}/><span className="text-[11px] text-gray-600 flex-1 leading-tight">{label}</span><span className="text-[11px] font-bold text-gray-500 flex-shrink-0">{val}</span></div>))}</div>
-              </div>
-            </div>
+        {/* Summary + Reasons */}
+        <div className="grid grid-cols-3 gap-4 mb-5">
+          <SummaryCard title="ตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff"/>
+          <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
+          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-red-500"/><span className="font-bold text-gray-900 text-[13px]">สาเหตุไม่ชดเชย ({fmtNum(stats.notComp)})</span></div>
+            <DonutChart size={110} slices={DONUT_REASONS}/>
+            <div className="mt-3 space-y-1.5">{stats.reasons.map(([label,val],i)=>(<div key={i} className="flex items-start gap-2"><div className="w-2 h-2 rounded-sm mt-1 flex-shrink-0" style={{background:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]}}/><span className="text-[11px] text-gray-600 flex-1 leading-tight">{label}</span><span className="text-[11px] font-bold text-gray-500 flex-shrink-0">{val}</span></div>))}</div>
+          </div>
+        </div>
 
-            {/* Table */}
-            <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
-              <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-wrap gap-3">
-                <div className="flex items-center gap-2.5"><div className="w-2 h-2 rounded-full bg-indigo-500"/><div className="font-bold text-gray-900 text-[13.5px]">รายการบริการตับอักเสบ</div></div>
-                <div className="flex flex-wrap gap-2">
-                  <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['hepB','บี'],['hepC','ซี']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFType(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterType===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
-                  <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFStatus(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterStatus===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
-                  <div className="relative"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"><circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/></svg><input className="pl-9 pr-3 py-2 text-[12.5px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 w-[200px]" placeholder="ค้นหาชื่อ, PID, REP No..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></div>
-                  <button type="button" onClick={()=>exportCsv(filtered)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3"><path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/></svg>Export CSV</button>
-                </div>
-              </div>
-              <div className="flex flex-wrap gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-[12px]">
-                <StatChip dot="#6b7280" label="แสดง" val={fmtNum(filtered.length)} unit="รายการ"/>
-                <div className="w-px bg-gray-200 self-stretch"/>
-                <StatChip dot="#059669" label="ชดเชยรวม" val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit=""/>
-                <div className="w-px bg-gray-200 self-stretch"/>
-                <StatChip dot="#dc2626" label="ไม่ชดเชย" val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ"/>
-              </div>
-              <div className="overflow-x-auto" style={{maxHeight:'60vh'}}>
-                <table className="w-full border-collapse text-[12px]">
-                  <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
-                    <tr>{['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','วันที่บริการ','วันที่ส่ง','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','HSEND','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
-                  </thead>
-                  <tbody>
-                    {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:pageRows.map((r,i)=>{
-                      const reason=getReasonLabel(r.note,r.note_other)
-                      const tr=repToTransfer[r.rep_no]
-                      return <tr key={r.id??`${r.trans_id}-${r.item_seq}-${i}`} className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
-                        <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
-                        <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.rep_no}</td>
-                        <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
-                        <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
-                        <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-600')}>{r.rights||'—'}</span></td>
-                        <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.service_date}</td>
-                        <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.send_date}</td>
-                        <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{isHepB(r.service_name)?'🟦':'🔵'}<span className="truncate max-w-[180px]">{r.service_name}</span></span></td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.total_claim>0?fmtBaht(r.total_claim):'—'}</td>
-                        <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold"><span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span></td>
-                        <td className="px-3 py-2.5 text-center"><span className={cn('inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
-                        <td className="px-3 py-2.5 text-center">
-                          {sumRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:tr?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}
-                        </td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{tr ? isoToThai(tr.date) : '—'}</td>
-                        <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
-                        <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
-                      </tr>
-                    })}
-                  </tbody>
-                </table>
-              </div>
-              {totalPages>1&&<div className="flex items-center gap-1.5 px-6 py-4 border-t border-gray-100 flex-wrap">
-                <button type="button" disabled={page===1} onClick={()=>setPage(p=>p-1)} className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400">‹</button>
-                {Array.from({length:Math.min(totalPages,10)},(_,i)=>{const p=totalPages<=10?i+1:Math.max(1,Math.min(page-4,totalPages-9))+i;return<button key={p} type="button" onClick={()=>setPage(p)} className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',p===page?'bg-blue-600 border-blue-600 text-white font-semibold':'bg-white border-gray-200 text-gray-500 hover:border-blue-400')}>{p}</button>})}
-                <button type="button" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)} className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400">›</button>
-                <span className="text-[12px] text-gray-400 ml-2">หน้า {page}/{totalPages} · {fmtNum(filtered.length)} รายการ</span>
-              </div>}
+        {/* Table */}
+        <div className="bg-white border border-gray-200 rounded-2xl shadow-sm">
+          <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100 flex-wrap gap-3">
+            <div className="flex items-center gap-2.5"><div className="w-2 h-2 rounded-full bg-indigo-500"/><div className="font-bold text-gray-900 text-[13.5px]">รายการบริการตับอักเสบ</div></div>
+            <div className="flex flex-wrap gap-2">
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['hepB','บี'],['hepC','ซี']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFType(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterType===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFStatus(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterStatus===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
+              <div className="relative"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"><circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/></svg><input className="pl-9 pr-3 py-2 text-[12.5px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 w-[200px]" placeholder="ค้นหาชื่อ, PID, REP No..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></div>
+              <button type="button" onClick={()=>exportCsv(filtered)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3"><path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/></svg>Export CSV</button>
+              <button type="button" onClick={()=>setConfirm('individual')} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-red-50 border border-red-200 text-red-500 rounded-lg hover:bg-red-100 transition-all">ล้างข้อมูล</button>
             </div>
-          </>}
-      </>
+          </div>
+          <div className="flex flex-wrap gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-[12px]">
+            <StatChip dot="#6b7280" label="แสดง" val={fmtNum(filtered.length)} unit="รายการ"/>
+            <div className="w-px bg-gray-200 self-stretch"/>
+            <StatChip dot="#059669" label="ชดเชยรวม" val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit=""/>
+            <div className="w-px bg-gray-200 self-stretch"/>
+            <StatChip dot="#dc2626" label="ไม่ชดเชย" val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ"/>
+          </div>
+          <div className="overflow-x-auto" style={{maxHeight:'60vh'}}>
+            <table className="w-full border-collapse text-[12px]">
+              <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
+                <tr>{['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','วันที่บริการ','วันที่ส่ง','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','HSEND','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
+              </thead>
+              <tbody>
+                {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:pageRows.map((r,i)=>{
+                  const reason=getReasonLabel(r.note,r.note_other)
+                  const tr=repToTransfer[r.rep_no]
+                  return <tr key={r.id??`${r.trans_id}-${r.item_seq}-${i}`} className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
+                    <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.rep_no}</td>
+                    <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
+                    <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-600')}>{r.rights||'—'}</span></td>
+                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.service_date}</td>
+                    <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.send_date}</td>
+                    <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{isHepB(r.service_name)?'🟦':'🔵'}<span className="truncate max-w-[180px]">{r.service_name}</span></span></td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.total_claim>0?fmtBaht(r.total_claim):'—'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold"><span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span></td>
+                    <td className="px-3 py-2.5 text-center"><span className={cn('inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
+                    <td className="px-3 py-2.5 text-center">
+                      {sumRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:tr?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{tr ? isoToThai(tr.date) : '—'}</td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
+                    <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
+                  </tr>
+                })}
+              </tbody>
+            </table>
+          </div>
+          {totalPages>1&&<div className="flex items-center gap-1.5 px-6 py-4 border-t border-gray-100 flex-wrap">
+            <button type="button" disabled={page===1} onClick={()=>setPage(p=>p-1)} className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400">‹</button>
+            {Array.from({length:Math.min(totalPages,10)},(_,i)=>{const p=totalPages<=10?i+1:Math.max(1,Math.min(page-4,totalPages-9))+i;return<button key={p} type="button" onClick={()=>setPage(p)} className={cn('px-3 py-1.5 text-[12px] border rounded-lg transition-all',p===page?'bg-blue-600 border-blue-600 text-white font-semibold':'bg-white border-gray-200 text-gray-500 hover:border-blue-400')}>{p}</button>})}
+            <button type="button" disabled={page===totalPages} onClick={()=>setPage(p=>p+1)} className="px-3 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg text-gray-400 disabled:opacity-25 hover:border-blue-400">›</button>
+            <span className="text-[12px] text-gray-400 ml-2">หน้า {page}/{totalPages} · {fmtNum(filtered.length)} รายการ</span>
+          </div>}
+        </div>
+      </>}
     </div>
   )
 }
