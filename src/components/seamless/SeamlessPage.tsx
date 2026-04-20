@@ -222,6 +222,18 @@ function getReasonLabel(note: string, noteOther: string): string {
 const RIGHTS_LABEL: Record<string, string> = { UCS:'บัตรทอง', WEL:'สวัสดิการข้าราชการ', SSS:'ประกันสังคม', OFC:'ต่างด้าว', LGO:'อปท.' }
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
+// ── HSEND → ชื่อย่อสำหรับแสดง UI ─────────────────────────────────
+const HSEND_UNIT_NAME: Record<string, string> = {
+  '07624': 'รพ.สต.บ้านหนองยาง',
+  '07625': 'รพ.สต.หนองปลาไหล',
+  '07626': 'รพ.สต.บ้านวังทับไทร',
+  '07627': 'รพ.สต.บ้านคลองสะแก-ป่าหวาย',
+  '07628': 'รพ.สต.บ้านยางสามต้น',
+  '07629': 'รพ.สต.หนองพระ',
+  '07630': 'รพ.สต.หนองปล้อง',
+  '11258': 'รพ.วังทรายพูน',
+}
+
 // ── HSEND → unit name mapping ──────────────────────────────────────
 const HSEND_UNIT_MAP: Record<string, string[]> = {
   '07624': [
@@ -851,6 +863,18 @@ export function SeamlessPage({
           </div>}
         </div>
 
+        {/* แสดงชื่อหน่วยบริการเมื่อเลือก HSEND */}
+        {filterHsend.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-4">
+            {filterHsend.map(h => (
+              <div key={h} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-xl">
+                <span className="text-[11px] font-black text-blue-400 font-mono">{h}</span>
+                <span className="text-[13px] font-bold text-blue-800">{HSEND_UNIT_NAME[h] ?? h}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* KPI cards */}
         <div className="grid grid-cols-4 gap-4 mb-5">
           <KpiCard icon="🔬" label="บริการตับอักเสบ บี" val={fmtNum(stats.hepB)} sub={`${fmtNum(stats.uniqueB)} คน`} barColor="#2563eb" bar={stats.total?stats.hepB/stats.total:0}/>
@@ -943,9 +967,16 @@ export function SeamlessPage({
                     <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold"><span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span></td>
                     <td className="px-3 py-2.5 text-center"><span className={cn('inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
                     <td className="px-3 py-2.5 text-center">
-                      {sumRows.length===0?<span className="text-gray-300 text-[11px]">—</span>:tr?<span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>:<span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>}
+                      {r.status==='ไม่ชดเชย'
+                        ? <span className="text-gray-300 text-[11px]">—</span>
+                        : sumRows.length===0
+                          ? <span className="text-gray-300 text-[11px]">—</span>
+                          : tr
+                            ? <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>
+                            : <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>
+                      }
                     </td>
-                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{tr ? isoToThai(tr.date) : '—'}</td>
+                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{r.status!=='ไม่ชดเชย' && tr ? isoToThai(tr.date) : '—'}</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
                     <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
                   </tr>
