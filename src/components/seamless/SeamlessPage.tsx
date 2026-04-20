@@ -563,21 +563,59 @@ export function SeamlessPage({
   },[hepRows,filterHsend,filterRights,filterYear,filterMonth])
 
   const stats = useMemo(()=>{
-    const hepB=hepRowsFiltered.filter(r=>isHepB(r.service_name))
-    const hepC=hepRowsFiltered.filter(r=>isHepC(r.service_name))
+    // ── บี/ซี มาจาก screeningDB (filter HSEND/ปี/เดือน) ──
+    const allowedUnits: Set<string> | null =
+      filterHsend.length > 0
+        ? new Set(filterHsend.flatMap(h => HSEND_UNIT_MAP[h] ?? []))
+        : null
+    const unitAllowed = (unit: string) => allowedUnits === null || allowedUnits.has(unit)
+    const sdb = screeningDB ?? { HBsAg: {}, AntiHCV: {} }
+
+    const bPids = new Set<string>()
+    const cPids = new Set<string>()
+
+    for (const byPid of Object.values(sdb.HBsAg)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+        if (!unitAllowed(pidEntry.unit)) continue
+        const hasDate = pidEntry.dates.some(d => {
+          const ds = parseDateParts(d)
+          if (!ds) return false
+          if (filterYear !== 'all' && ds.year !== filterYear) return false
+          if (filterMonth !== 'all' && ds.month !== filterMonth) return false
+          return true
+        })
+        if (hasDate) bPids.add(pid)
+      }
+    }
+    for (const byPid of Object.values(sdb.AntiHCV)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+        if (!unitAllowed(pidEntry.unit)) continue
+        const hasDate = pidEntry.dates.some(d => {
+          const ds = parseDateParts(d)
+          if (!ds) return false
+          if (filterYear !== 'all' && ds.year !== filterYear) return false
+          if (filterMonth !== 'all' && ds.month !== filterMonth) return false
+          return true
+        })
+        if (hasDate) cPids.add(pid)
+      }
+    }
+
+    // ── ชดเชย/ไม่ชดเชย มาจาก seamless_records ──
     const comp=hepRowsFiltered.filter(r=>r.status==='ชดเชย')
     const notComp=hepRowsFiltered.filter(r=>r.status==='ไม่ชดเชย')
     const reasonMap:Record<string,number>={}
     for(const r of notComp){const key=getReasonLabel(r.note,r.note_other);reasonMap[key]=(reasonMap[key]||0)+1}
     return {
-      total:hepRowsFiltered.length, hepB:hepB.length, hepC:hepC.length,
+      total:hepRowsFiltered.length,
+      hepB:bPids.size, hepC:cPids.size,
+      uniqueB:bPids.size, uniqueC:cPids.size,
       comp:comp.length, notComp:notComp.length,
       totalComp:comp.reduce((a,b)=>a+b.compensated,0),
       totalClaim:hepRowsFiltered.reduce((a,b)=>a+b.total_claim,0),
-      uniqueB:new Set(hepB.map(r=>r.pid)).size, uniqueC:new Set(hepC.map(r=>r.pid)).size,
       reasons:Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,5),
     }
-  },[hepRowsFiltered])
+  },[screeningDB, hepRowsFiltered, filterHsend, filterYear, filterMonth])
 
   // ── monthlyData (ใหม่) ──────────────────────────────────────────
   // บาร์ บี/ซี มาจาก screeningDB โดยตรง กรองด้วย unit ตาม HSEND mapping
