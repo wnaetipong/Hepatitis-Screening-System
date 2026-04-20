@@ -607,43 +607,43 @@ export function SeamlessPage({
     const unitAllowed = (unit: string) =>
       allowedUnits === null || allowedUnits.has(unit)
 
-    if (screeningDB) {
-      // HBsAg
-      for (const byPid of Object.values(screeningDB.HBsAg)) {
-        for (const [pid, { dates, unit }] of Object.entries(byPid)) {
-          if (!unitAllowed(unit)) continue
-          if (filterRights.length > 0) {
-            const row = hepRows.find(r => r.pid === pid)
-            if (!row || !filterRights.includes(row.rights)) continue
-          }
-          for (const d of dates) {
-            const ds = parseDateParts(d)
-            if (!ds) continue
-            if (filterYear !== 'all' && ds.year !== filterYear) continue
-            if (filterMonth !== 'all' && ds.month !== filterMonth) continue
-            const k = `${ds.year}/${ds.month}`
-            if (!bPids[k]) bPids[k] = new Set()
-            bPids[k].add(pid)
-          }
+    const sdb = screeningDB ?? { HBsAg: {}, AntiHCV: {} }
+
+    // HBsAg
+    for (const byPid of Object.values(sdb.HBsAg)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+        if (!unitAllowed(pidEntry.unit)) continue
+        if (filterRights.length > 0) {
+          const row = hepRows.find(r => r.pid === pid)
+          if (!row || !filterRights.includes(row.rights)) continue
+        }
+        for (const d of pidEntry.dates) {
+          const ds = parseDateParts(d)
+          if (!ds) continue
+          if (filterYear !== 'all' && ds.year !== filterYear) continue
+          if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+          const k = `${ds.year}/${ds.month}`
+          if (!bPids[k]) bPids[k] = new Set()
+          bPids[k].add(pid)
         }
       }
-      // AntiHCV
-      for (const byPid of Object.values(screeningDB.AntiHCV)) {
-        for (const [pid, { dates, unit }] of Object.entries(byPid)) {
-          if (!unitAllowed(unit)) continue
-          if (filterRights.length > 0) {
-            const row = hepRows.find(r => r.pid === pid)
-            if (!row || !filterRights.includes(row.rights)) continue
-          }
-          for (const d of dates) {
-            const ds = parseDateParts(d)
-            if (!ds) continue
-            if (filterYear !== 'all' && ds.year !== filterYear) continue
-            if (filterMonth !== 'all' && ds.month !== filterMonth) continue
-            const k = `${ds.year}/${ds.month}`
-            if (!cPids[k]) cPids[k] = new Set()
-            cPids[k].add(pid)
-          }
+    }
+    // AntiHCV
+    for (const byPid of Object.values(sdb.AntiHCV)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+        if (!unitAllowed(pidEntry.unit)) continue
+        if (filterRights.length > 0) {
+          const row = hepRows.find(r => r.pid === pid)
+          if (!row || !filterRights.includes(row.rights)) continue
+        }
+        for (const d of pidEntry.dates) {
+          const ds = parseDateParts(d)
+          if (!ds) continue
+          if (filterYear !== 'all' && ds.year !== filterYear) continue
+          if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+          const k = `${ds.year}/${ds.month}`
+          if (!cPids[k]) cPids[k] = new Set()
+          cPids[k].add(pid)
         }
       }
     }
