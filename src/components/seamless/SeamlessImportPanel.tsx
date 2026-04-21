@@ -16,6 +16,14 @@ export interface SmtRow {
   guarantee: number; tax: number; net: number
   pending: number; transferred: number; fiscal_year: string; source_file: string
 }
+export interface IndividualRow {
+  seq: string; rep_no: string; trans_id: string; hn: string; pid: string
+  name: string; rights: string; hmain: string; send_date: string; service_date: string
+  item_seq: string; service_name: string; qty: number; price: number; ceiling: number
+  total_claim: number; ps_code: string; ps_pct: number; compensated: number
+  not_comp: number; extra: number; recall: number; status: string; note: string
+  note_other: string; hsend: string; source_file: string
+}
 
 // ── Helpers ────────────────────────────────────────────────────────
 const fmtNum  = (n: number) => n.toLocaleString('th-TH')
@@ -82,6 +90,51 @@ function cv(row: any[], i: number): string {
 }
 function nv(row: any[], i: number): number {
   const v = parseFloat(String(row[i] ?? '')); return isNaN(v) ? 0 : v
+}
+function excelSerialToThaiDate(serial: number): string {
+  const date = new Date((serial - 25569) * 86400 * 1000)
+  const d = date.getUTCDate().toString().padStart(2,'0')
+  const m = (date.getUTCMonth()+1).toString().padStart(2,'0')
+  const y = (date.getUTCFullYear()+543).toString()
+  return `${d}/${m}/${y}`
+}
+function cdv(row: any[], i: number): string {
+  const v = row[i]
+  if (typeof v === 'number' && v > 1000) return excelSerialToThaiDate(v)
+  if (v === null || v === undefined || v === '') return ''
+  return String(v).trim()
+}
+
+// ── Parse Individual ───────────────────────────────────────────────
+async function parseIndividual(file: File): Promise<{ rows: IndividualRow[]; error?: string }> {
+  try {
+    const raw = await readXlsxRaw(file)
+    let dataStart = 10
+    for (let i = 0; i < Math.min(20, raw.length); i++) {
+      const joined = raw[i].map(v => String(v ?? '')).join('|')
+      if (joined.includes('ลำดับที่') && joined.includes('REP')) {
+        dataStart = i + 3; break
+      }
+    }
+    const rows: IndividualRow[] = []
+    for (let i = dataStart; i < raw.length; i++) {
+      const row = raw[i]
+      const repNo = cv(row, 1), transId = cv(row, 2)
+      if (!repNo || !transId) continue
+      rows.push({
+        seq: cv(row,0), rep_no: repNo, trans_id: transId, hn: cv(row,3),
+        pid: cv(row,5), name: cv(row,6), rights: cv(row,7), hmain: cv(row,8),
+        send_date: cdv(row,9), service_date: cdv(row,10), item_seq: cv(row,11),
+        service_name: cv(row,12), qty: nv(row,13), price: nv(row,14),
+        ceiling: nv(row,15), total_claim: nv(row,16), ps_code: cv(row,17),
+        ps_pct: nv(row,18), compensated: nv(row,19), not_comp: nv(row,20),
+        extra: nv(row,21), recall: nv(row,22), status: cv(row,23),
+        note: cv(row,24), note_other: cv(row,25), hsend: cv(row,26),
+        source_file: file.name,
+      })
+    }
+    return { rows }
+  } catch (e) { return { rows: [], error: String(e) } }
 }
 
 async function parseSummary(file: File, year: string): Promise<SummaryRow[]> {
@@ -178,9 +231,8 @@ function YearCard({
   )
 }
 
-// ── Add Year Card ──────────────────────────────────────────────────
 function AddYearCard({ onClick, color }: { onClick: () => void; color: 'purple' | 'teal' }) {
-  const hoverColor = color === 'purple' ? 'hover:border-purple-300 group-hover:text-purple-500' : 'hover:border-teal-300 group-hover:text-teal-500'
+  const hoverColor = color === 'purple' ? 'hover:border-purple-300' : 'hover:border-teal-300'
   return (
     <div onClick={onClick}
       className={cn('border-2 border-dashed border-gray-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 min-h-[140px] cursor-pointer group transition-all', hoverColor)}>
@@ -188,6 +240,139 @@ function AddYearCard({ onClick, color }: { onClick: () => void; color: 'purple' 
         <span className="text-gray-400 text-lg leading-none">+</span>
       </div>
       <div className="text-[11px] text-gray-400">เพิ่มปีใหม่</div>
+    </div>
+  )
+}
+
+// ── Individual Upload Card (1 card, ทุกปีรวมกัน) ──────────────────
+function IndividualCard({
+  totalRows, byYear, loading, progress,
+  onUpload, onClear,
+}: {
+  totalRows: number
+  byYear: Record<string, number>
+  loading: boolean
+  progress: string
+  onUpload: (files: File[]) => void
+  onClear: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [drag, setDrag] = useState(false)
+  const hasData = totalRows > 0
+  const years = Object.keys(byYear).sort()
+
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); setDrag(true) }}
+      onDragLeave={() => setDrag(false)}
+      onDrop={e => {
+        e.preventDefault(); setDrag(false)
+        const files = Array.from(e.dataTransfer.files).filter(f => /\.(xlsx|xls)$/i.test(f.name))
+        if (files.length) onUpload(files)
+      }}
+      className={cn(
+        'border-2 rounded-2xl p-5 transition-all',
+        drag ? 'border-blue-400 bg-blue-50/60 scale-[1.01]' :
+        hasData ? 'border-blue-200 bg-blue-50/30' : 'border-dashed border-gray-200 bg-gray-50/40',
+      )}
+    >
+      <input ref={inputRef} type="file" accept=".xlsx,.xls" className="hidden"
+        onChange={e => {
+          const f = Array.from(e.target.files ?? [])
+          e.target.value = ''
+          if (f.length) onUpload(f)
+        }}
+      />
+
+      {/* Header */}
+      <div className="flex items-start justify-between mb-4">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <div className="w-2 h-2 rounded-full bg-blue-500"/>
+            <span className="font-bold text-gray-900 text-[13.5px]">REP Individual</span>
+            <span className="text-[10px] font-semibold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">ทุกปีรวมกัน</span>
+          </div>
+          <div className="text-[11px] text-gray-400 ml-4">Seamless DMIS → REP → รายงาน REP แบบ Individual</div>
+        </div>
+        {hasData && (
+          <div className="text-right">
+            <div className="text-[20px] font-black text-blue-600">{fmtNum(totalRows)}</div>
+            <div className="text-[10px] text-gray-400">รายการ</div>
+          </div>
+        )}
+      </div>
+
+      {/* Year breakdown (แสดงเมื่อมีข้อมูล) */}
+      {hasData && years.length > 0 && (
+        <div className="grid grid-cols-4 gap-2 mb-4">
+          {years.map(yr => (
+            <div key={yr} className="bg-white border border-blue-100 rounded-xl p-3 text-center">
+              <div className="text-[10px] text-gray-400 mb-0.5">ปีงบ {yr}</div>
+              <div className="text-[14px] font-black text-blue-700">{fmtNum(byYear[yr])}</div>
+              <div className="text-[9px] text-gray-400">รายการ</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!hasData && !loading && (
+        <div className="flex flex-col items-center justify-center py-4 gap-2 mb-3">
+          <div className={cn('text-3xl transition-all', drag ? 'scale-125' : '')}>
+            {drag ? '📂' : '📥'}
+          </div>
+          <div className="text-[12px] text-gray-500 font-medium">
+            {drag ? 'วางไฟล์ที่นี่' : 'ลากไฟล์ .xlsx มาวาง หรือกดปุ่ม Upload'}
+          </div>
+          <div className="text-[11px] text-gray-400">อัปโหลดได้ครั้งละหลายไฟล์ · ข้อมูลซ้ำจะถูก upsert อัตโนมัติ</div>
+        </div>
+      )}
+
+      {/* Loading */}
+      {loading && (
+        <div className="flex items-center justify-center gap-3 py-4 mb-3">
+          <span className="w-5 h-5 border-[3px] border-blue-200 border-t-blue-600 rounded-full animate-spin"/>
+          <span className="text-[12px] text-blue-600 font-medium">{progress || 'กำลังประมวลผล...'}</span>
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          disabled={loading}
+          onClick={() => inputRef.current?.click()}
+          className={cn(
+            'flex-1 py-2 text-[12px] font-semibold rounded-xl transition-all flex items-center justify-center gap-2',
+            loading ? 'bg-gray-100 text-gray-400 cursor-not-allowed' :
+            hasData ? 'bg-white border border-blue-200 text-blue-600 hover:bg-blue-50' :
+                      'bg-blue-600 hover:bg-blue-700 text-white shadow-sm',
+          )}
+        >
+          {loading ? (
+            <><span className="w-3.5 h-3.5 border-2 border-gray-300 border-t-gray-500 rounded-full animate-spin"/>กำลังโหลด...</>
+          ) : hasData ? (
+            <>↺ อัปเดต / เพิ่มข้อมูล</>
+          ) : (
+            <>+ Upload ไฟล์ Individual</>
+          )}
+        </button>
+        {hasData && (
+          <button
+            type="button"
+            disabled={loading}
+            onClick={onClear}
+            className="px-3 py-2 text-[12px] text-red-400 border border-red-100 rounded-xl hover:bg-red-50 transition-all disabled:opacity-40"
+          >
+            ล้างทั้งหมด
+          </button>
+        )}
+      </div>
+
+      {/* Note */}
+      <div className="mt-3 text-[10.5px] text-gray-400 bg-gray-50 rounded-lg px-3 py-2 leading-relaxed">
+        <b className="text-gray-500">หมายเหตุ:</b> ระบบจะ upsert ด้วย <code className="bg-gray-200 px-1 rounded text-[10px]">trans_id + item_seq</code> — ข้อมูลใหม่จะแทนที่รายการเดิมอัตโนมัติ
+      </div>
     </div>
   )
 }
@@ -201,6 +386,10 @@ interface SeamlessImportPanelProps {
   onSumDeleteYear: (year: string) => void
   onSmtDeleteYear: (year: string) => void
   showToast: (msg: string, ok: boolean) => void
+  // Individual (optional — ถ้าไม่ส่งมาจะใช้ local state)
+  indRows?: IndividualRow[]
+  onIndImported?: (rows: IndividualRow[]) => void
+  onIndClear?: () => void
 }
 
 export function SeamlessImportPanel({
@@ -208,16 +397,101 @@ export function SeamlessImportPanel({
   onSumImported, onSmtImported,
   onSumDeleteYear, onSmtDeleteYear,
   showToast,
+  indRows: externalIndRows,
+  onIndImported,
+  onIndClear,
 }: SeamlessImportPanelProps) {
   const [sumYears, setSumYears] = useState(['2566','2567','2568','2569'])
   const [smtYears, setSmtYears] = useState(['2566','2567','2568','2569'])
   const [loadingSumYear, setLoadingSumYear] = useState<string|null>(null)
   const [loadingSmtYear, setLoadingSmtYear] = useState<string|null>(null)
 
-  // compute unique years from actual data
+  // Individual state (local fallback)
+  const [localIndRows, setLocalIndRows] = useState<IndividualRow[]>([])
+  const indRows = externalIndRows ?? localIndRows
+  const [loadingInd, setLoadingInd] = useState(false)
+  const [progInd, setProgInd] = useState('')
+
   const allSumYears = [...new Set([...sumYears, ...sumRows.map(r => r.fiscal_year).filter(Boolean)])].sort()
   const allSmtYears = [...new Set([...smtYears, ...smtRows.map(r => r.fiscal_year).filter(Boolean)])].sort()
 
+  // สรุป Individual แยกรายปีงบจาก rep_no (DKTP68... → ปีงบ 2568)
+  const indByYear = useMemo_(() => {
+    const map: Record<string, number> = {}
+    for (const r of indRows) {
+      const yyStr = r.rep_no?.substring(4, 6) ?? ''
+      const fy = yyStr ? `25${yyStr}` : 'อื่นๆ'
+      map[fy] = (map[fy] ?? 0) + 1
+    }
+    return map
+  }, [indRows])
+
+  // ── Individual Upload ──────────────────────────────────────────
+  const handleIndUpload = useCallback(async (files: File[]) => {
+    const valid = files.filter(f => /\.(xlsx|xls)$/i.test(f.name))
+    if (!valid.length) { showToast('กรุณาเลือกไฟล์ .xlsx', false); return }
+    setLoadingInd(true)
+    let totalNew = 0, totalSkip = 0
+    for (const f of valid) {
+      setProgInd(`กำลัง parse: ${f.name}`)
+      const { rows: parsed, error } = await parseIndividual(f)
+      if (error) { showToast(`อ่านไฟล์ไม่สำเร็จ: ${error}`, false); continue }
+      if (!parsed.length) { showToast(`ไม่พบข้อมูลในไฟล์ ${f.name}`, false); continue }
+
+      const BATCH = 500
+      const batches = Math.ceil(parsed.length / BATCH)
+      let ok = true
+
+      for (let b = 0; b < batches; b++) {
+        const chunk = parsed.slice(b * BATCH, (b + 1) * BATCH)
+        setProgInd(`บันทึก batch ${b + 1}/${batches} (${fmtNum(chunk.length)} รายการ)...`)
+        const j = await fetch('/api/seamless', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rows: chunk }),
+        }).then(r => r.json())
+
+        if (j.ok) {
+          totalNew += j.imported ?? 0
+          totalSkip += chunk.length - (j.imported ?? 0)
+          // update local/external state
+          if (onIndImported) {
+            onIndImported(chunk)
+          } else {
+            setLocalIndRows(prev => {
+              const ex = new Set(prev.map(r => `${r.trans_id}|${r.item_seq}`))
+              return [...prev, ...chunk.filter(r => !ex.has(`${r.trans_id}|${r.item_seq}`))]
+            })
+          }
+        } else {
+          showToast(`batch ${b + 1} ล้มเหลว: ${j.error}`, false)
+          ok = false; break
+        }
+      }
+      if (!ok) continue
+    }
+    showToast(
+      totalNew > 0
+        ? `✓ เพิ่มใหม่ ${fmtNum(totalNew)} · อัปเดต/ข้ามซ้ำ ${fmtNum(totalSkip)} รายการ`
+        : 'ไม่มีข้อมูลใหม่',
+      totalNew > 0,
+    )
+    setProgInd(''); setLoadingInd(false)
+  }, [onIndImported, showToast])
+
+  const handleIndClear = useCallback(async () => {
+    if (!window.confirm('ล้างข้อมูล Individual ทั้งหมดจาก Supabase?')) return
+    const j = await fetch('/api/seamless', { method: 'DELETE' }).then(r => r.json())
+    if (j.ok) {
+      if (onIndClear) onIndClear()
+      else setLocalIndRows([])
+      showToast('✓ ล้างข้อมูล Individual เรียบร้อย', true)
+    } else {
+      showToast(j.error, false)
+    }
+  }, [onIndClear, showToast])
+
+  // ── Summary Upload ─────────────────────────────────────────────
   const handleSumUpload = useCallback(async (files: File[], year: string) => {
     setLoadingSumYear(year)
     try {
@@ -273,7 +547,20 @@ export function SeamlessImportPanel({
 
   return (
     <div className="space-y-7">
-      {/* REP Summary */}
+
+      {/* ── REP Individual (ใหม่) ─────────────────────────────── */}
+      <div>
+        <IndividualCard
+          totalRows={indRows.length}
+          byYear={indByYear}
+          loading={loadingInd}
+          progress={progInd}
+          onUpload={handleIndUpload}
+          onClear={handleIndClear}
+        />
+      </div>
+
+      {/* ── REP Summary ───────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <div className="w-2 h-2 rounded-full bg-purple-500"/>
@@ -301,7 +588,7 @@ export function SeamlessImportPanel({
         </div>
       </div>
 
-      {/* SMT */}
+      {/* ── SMT ──────────────────────────────────────────────── */}
       <div>
         <div className="flex items-center gap-2 mb-3">
           <div className="w-2 h-2 rounded-full bg-teal-500"/>
@@ -333,4 +620,17 @@ export function SeamlessImportPanel({
       </div>
     </div>
   )
+}
+
+// ── useMemo_ polyfill (ใช้แทน React.useMemo เพื่อไม่ต้อง import เพิ่ม) ──
+function useMemo_<T>(factory: () => T, deps: any[]): T {
+  const ref = useRef<{ deps: any[]; value: T } | null>(null)
+  if (!ref.current || !depsEqual(ref.current.deps, deps)) {
+    ref.current = { deps, value: factory() }
+  }
+  return ref.current.value
+}
+function depsEqual(a: any[], b: any[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((v, i) => Object.is(v, b[i]))
 }
