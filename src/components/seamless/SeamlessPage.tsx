@@ -421,23 +421,24 @@ function StatChip({ dot, label, val, unit }: { dot:string; label:string; val:str
   return <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{background:dot}}/><span className="text-gray-500">{label}</span><span className="font-bold text-gray-800">{val}</span>{unit&&<span className="text-gray-400">{unit}</span>}</div>
 }
 
-function SummaryCard({ title, rows, color, bgColor, totalOverride, compOverride, totalCompOverride }: {
+function SummaryCard({ title, rows, color, bgColor, totalOverride, compOverride, notCompOverride, pendingOverride, totalCompOverride }: {
   title:string; rows:IndividualRow[]; color:string; bgColor:string
-  totalOverride?:number; compOverride?:number; totalCompOverride?:number
+  totalOverride?:number; compOverride?:number; notCompOverride?:number; pendingOverride?:number; totalCompOverride?:number
 }) {
-  const total = totalOverride ?? rows.length
-  const compCount = compOverride ?? rows.filter(r=>r.status==='ชดเชย').length
-  const notComp = rows.filter(r=>r.status==='ไม่ชดเชย')
-  const notCompCount = total - compCount
+  const total      = totalOverride    ?? rows.length
+  const compCount  = compOverride     ?? rows.filter(r=>r.status==='ชดเชย').length
+  const notCompCount = notCompOverride ?? rows.filter(r=>r.status==='ไม่ชดเชย').length
+  const pendingCount = pendingOverride ?? 0
   const pct = total ? (compCount/total*100) : 0
   const totalComp = totalCompOverride ?? rows.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full" style={{background:color}}/><div className="font-bold text-gray-900 text-[13px]">{title}</div></div>
-      <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="text-center p-3 rounded-xl" style={{background:bgColor}}><div className="text-[18px] font-black" style={{color}}>{fmtNum(total)}</div><div className="text-[10px] text-gray-500">ทั้งหมด</div></div>
-        <div className="text-center p-3 rounded-xl bg-emerald-50"><div className="text-[18px] font-black text-emerald-600">{fmtNum(compCount)}</div><div className="text-[10px] text-gray-500">ชดเชยแล้ว</div></div>
-        <div className="text-center p-3 rounded-xl bg-gray-50"><div className="text-[18px] font-black text-gray-500">{fmtNum(notCompCount)}</div><div className="text-[10px] text-gray-500">ยังไม่มีข้อมูลชดเชย</div></div>
+      <div className="grid grid-cols-4 gap-2 mb-4">
+        <div className="text-center p-2.5 rounded-xl" style={{background:bgColor}}><div className="text-[16px] font-black" style={{color}}>{fmtNum(total)}</div><div className="text-[9px] text-gray-500">ทั้งหมด</div></div>
+        <div className="text-center p-2.5 rounded-xl bg-emerald-50"><div className="text-[16px] font-black text-emerald-600">{fmtNum(compCount)}</div><div className="text-[9px] text-gray-500">ชดเชยแล้ว</div></div>
+        <div className="text-center p-2.5 rounded-xl bg-red-50"><div className="text-[16px] font-black text-red-500">{fmtNum(notCompCount)}</div><div className="text-[9px] text-gray-500">ไม่ชดเชย</div></div>
+        <div className="text-center p-2.5 rounded-xl bg-gray-50"><div className="text-[16px] font-black text-gray-400">{fmtNum(pendingCount)}</div><div className="text-[9px] text-gray-400">ยังไม่มีข้อมูล</div></div>
       </div>
       <div className="mb-3"><div className="flex justify-between text-[11.5px] mb-1"><span className="text-gray-500">อัตราชดเชย</span><span className="font-bold" style={{color}}>{pct.toFixed(1)}%</span></div><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width:`${pct}%`,background:color}}/></div></div>
       <div className="text-[12px] font-bold" style={{color}}>ยอดชดเชยรวม: ฿{fmtBaht(totalComp)}</div>
@@ -638,8 +639,16 @@ export function SeamlessPage({
     // join PID จาก screeningDB กับ seamless_records เพื่อนับชดเชย
     const seamlessB = hepRowsFiltered.filter(r=>isHepB(r.service_name))
     const seamlessC = hepRowsFiltered.filter(r=>isHepC(r.service_name))
-    const compB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').length
-    const compC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').length
+    const seamlessBPids = new Set(seamlessB.map(r=>r.pid))
+    const seamlessCPids = new Set(seamlessC.map(r=>r.pid))
+
+    const compB    = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').length
+    const compC    = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').length
+    const notCompB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ไม่ชดเชย').length
+    const notCompC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ไม่ชดเชย').length
+    const pendingB = bPids.size - compB - notCompB  // อยู่ใน screeningDB แต่ไม่มีใน seamless
+    const pendingC = cPids.size - compC - notCompC
+
     const totalCompB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
     const totalCompC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
 
@@ -647,7 +656,7 @@ export function SeamlessPage({
       total:hepRowsFiltered.length,
       hepB:bPids.size, hepC:cPids.size,
       uniqueB:bPids.size, uniqueC:cPids.size,
-      compB, compC,
+      compB, compC, notCompB, notCompC, pendingB, pendingC,
       comp:comp.length, notComp:notComp.length,
       totalComp:comp.reduce((a,b)=>a+b.compensated,0),
       totalCompB, totalCompC,
@@ -1011,8 +1020,8 @@ export function SeamlessPage({
 
         {/* Summary + Reasons */}
         <div className="grid grid-cols-3 gap-4 mb-5">
-          <SummaryCard title="ตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff" totalOverride={stats.hepB} compOverride={stats.compB} totalCompOverride={stats.totalCompB}/>
-          <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff" totalOverride={stats.hepC} compOverride={stats.compC} totalCompOverride={stats.totalCompC}/>
+          <SummaryCard title="ตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff" totalOverride={stats.hepB} compOverride={stats.compB} notCompOverride={stats.notCompB} pendingOverride={stats.pendingB} totalCompOverride={stats.totalCompB}/>
+          <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff" totalOverride={stats.hepC} compOverride={stats.compC} notCompOverride={stats.notCompC} pendingOverride={stats.pendingC} totalCompOverride={stats.totalCompC}/>
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-red-500"/><span className="font-bold text-gray-900 text-[13px]">สาเหตุไม่ชดเชย ({fmtNum(stats.notComp)})</span></div>
             <DonutChart size={110} slices={DONUT_REASONS}/>
