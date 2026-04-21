@@ -219,6 +219,10 @@ function isoToThai(s: string): string {
   const p = s.split('-')
   return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s
 }
+function shortenUnit(unit: string): string {
+  return unit.replace('โรงพยาบาลส่งเสริมสุขภาพตำบล', 'รพ.สต.')
+}
+
 function getReasonLabel(note: string, noteOther: string): string {
   const raw = note || ''
   if (raw.startsWith('C305')) return 'ไม่พบการแสดงตนยืนยันสิทธิ (C305)'
@@ -604,12 +608,12 @@ export function SeamlessPage({
 
   const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
 
-  // pid → {name, rights} from village data
-  const pidInfoMap = useMemo(()=>{
-    const m: Record<string,{name:string;rights:string}> = {}
+  // pid → name from village (screening data)
+  const pidNameMap = useMemo(()=>{
+    const m: Record<string,string> = {}
     for(const rows of Object.values(village??{}))
       for(const r of rows)
-        m[r.pid]={name:`${r.prefix}${r.fname} ${r.lname}`.trim(),rights:r.right}
+        m[r.pid]=`${r.prefix}${r.fname} ${r.lname}`.trim()
     return m
   },[village])
 
@@ -623,7 +627,7 @@ export function SeamlessPage({
     return m
   },[hepRows])
 
-  // Primary table source: ScreeningDB → join Individual → join SMT
+  // Primary table source: ScreeningDB → join Individual (1 row/pid+type) → join SMT
   const screeningTableRows = useMemo(():ScrTableRow[]=>{
     const sdb=screeningDB??{HBsAg:{},AntiHCV:{}}
     const allowedUnits:Set<string>|null=filterHsend.length>0
@@ -648,25 +652,26 @@ export function SeamlessPage({
     const result:ScrTableRow[]=[]
     for(const [key,scr] of Object.entries(screenMap)){
       const [pid,type]=key.split('|') as [string,'HBsAg'|'AntiHCV']
-      const info=pidInfoMap[pid]??{name:'',rights:''}
-      if(filterRights.length>0&&!filterRights.includes(info.rights)) continue
       const inds=pidIndMap[key]??[]
-      const nameFromInd=inds[0]?.name??''
-      const rightsFromInd=inds[0]?.rights??''
-      const name=info.name||nameFromInd
-      const rights=info.rights||rightsFromInd
+      // rights จาก seamless_records (Individual); fallback village
+      const rightsFromInd=inds.find(r=>r.rights)?.rights??''
+      const rights=rightsFromInd
+      // กรองสิทธิตาม seamless_records
+      if(filterRights.length>0&&!filterRights.includes(rights)) continue
+      // ชื่อจาก village (screening data)
+      const name=pidNameMap[pid]??inds[0]?.name??''
       if(inds.length>0){
-        for(const ind of inds){
-          const tr=repToTransfer[ind.rep_no]
-          result.push({
-            pid,name,rights,type,screenDate:scr.date,unit:scr.unit,
-            repNo:ind.rep_no,sendDate:ind.send_date,
-            totalClaim:ind.total_claim,compensated:ind.compensated,
-            compStatus:(ind.status as 'ชดเชย'|'ไม่ชดเชย')||'ยังไม่มีข้อมูล',
-            note:ind.note,noteOther:ind.note_other,hsend:ind.hsend||ind.hmain||'',
-            transferDate:tr?.date??'',transferStatus:tr?'โอนแล้ว':'รอโอน',
-          })
-        }
+        // เลือก 1 Individual record ที่ดีที่สุด: ชดเชย > ไม่ชดเชย > ล่าสุด
+        const best=inds.find(r=>r.status==='ชดเชย')??inds.find(r=>r.status==='ไม่ชดเชย')??inds[inds.length-1]
+        const tr=repToTransfer[best.rep_no]
+        result.push({
+          pid,name,rights,type,screenDate:scr.date,unit:scr.unit,
+          repNo:best.rep_no,sendDate:best.send_date,
+          totalClaim:best.total_claim,compensated:best.compensated,
+          compStatus:(best.status as 'ชดเชย'|'ไม่ชดเชย')||'ยังไม่มีข้อมูล',
+          note:best.note,noteOther:best.note_other,hsend:best.hsend||best.hmain||'',
+          transferDate:tr?.date??'',transferStatus:tr?'โอนแล้ว':'รอโอน',
+        })
       } else {
         result.push({
           pid,name,rights,type,screenDate:scr.date,unit:scr.unit,
@@ -677,7 +682,7 @@ export function SeamlessPage({
       }
     }
     return result
-  },[screeningDB,pidInfoMap,pidIndMap,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange,repToTransfer])
+  },[screeningDB,pidNameMap,pidIndMap,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange,repToTransfer])
 
   const hepRowsFiltered = useMemo(()=>{
     let r=hepRows
@@ -898,8 +903,8 @@ export function SeamlessPage({
   const DONUT_RIGHTS=RIGHTS_ORDER.filter(k=>hepRowsFiltered.some(r=>r.rights===k)).map(key=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:RIGHTS_COLOR[key]??'#9ca3af'}))
 
   function exportCsv(rows:ScrTableRow[]) {
-    const h=['ลำดับ','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ']
-    const d=rows.map((r,i)=>[i+1,r.pid,r.name,r.rights,r.unit,r.screenDate,r.type==='HBsAg'?'ตับอักเสบ บี':'ตับอักเสบ ซี',r.repNo,r.sendDate,r.totalClaim,r.compensated,r.compStatus,r.transferStatus||'—',r.transferDate||'—',getReasonLabel(r.note,r.noteOther)==='ไม่ระบุ'?'—':getReasonLabel(r.note,r.noteOther)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))
+    const h=['ลำดับ','PID','ชื่อ-สกุล','สิทธิ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ','หน่วยบริการ']
+    const d=rows.map((r,i)=>{const reason=getReasonLabel(r.note,r.noteOther);const showTransfer=r.compStatus!=='ไม่ชดเชย'&&r.compStatus!=='ยังไม่มีข้อมูล';return[i+1,r.pid,r.name,r.rights?RIGHTS_LABEL[r.rights]??r.rights:'—',r.screenDate,r.type==='HBsAg'?'ตับอักเสบ บี':'ตับอักเสบ ซี',r.repNo,r.sendDate,r.totalClaim,r.compensated,r.compStatus,showTransfer?r.transferStatus||'—':'—',showTransfer&&r.transferDate?r.transferDate:'—',reason==='ไม่ระบุ'?'—':reason,shortenUnit(r.unit)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')})
     const b=new Blob(['\uFEFF'+[h.join(','),...d].join('\n')],{type:'text/csv;charset=utf-8;'})
     const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`seamless_${new Date().toISOString().split('T')[0]}.csv`;a.click();URL.revokeObjectURL(u)
   }
@@ -1052,7 +1057,7 @@ export function SeamlessPage({
             </div>
             <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
               <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
-              {RIGHTS_ORDER.filter(k=>screeningTableRows.some(r=>r.rights===k)).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{RIGHTS_LABEL[k]??k}</option>)}
+              {RIGHTS_ORDER.filter(k=>hepRows.some(r=>r.rights===k)).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{RIGHTS_LABEL[k]??k}</option>)}
             </select>
             {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
           </div>
@@ -1152,7 +1157,7 @@ export function SeamlessPage({
           <div className="overflow-x-auto" style={{maxHeight:'60vh'}}>
             <table className="w-full border-collapse text-[12px]">
               <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
-                <tr>{['#','ชื่อ-สกุล','PID','สิทธิ','หน่วยบริการ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
+                <tr>{['#','ชื่อ-สกุล','PID','สิทธิ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ','หน่วยบริการ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody>
                 {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:(pageRows as ScrTableRow[]).map((r,i)=>{
@@ -1162,7 +1167,6 @@ export function SeamlessPage({
                     <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name||<span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
                     <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':r.rights==='LGO'?'bg-cyan-100 text-cyan-700':'bg-gray-100 text-gray-600')}>{r.rights?RIGHTS_LABEL[r.rights]??r.rights:'—'}</span></td>
-                    <td className="px-3 py-2.5 text-[11.5px] text-gray-600 max-w-[180px]"><span className="truncate block" title={r.unit}>{r.unit||'—'}</span></td>
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap text-[11.5px]">{r.screenDate||'—'}</td>
                     <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',r.type==='HBsAg'?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{r.type==='HBsAg'?'■ บี':'● ซี'}</span></td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.repNo||<span className="text-gray-300">—</span>}</td>
@@ -1175,19 +1179,18 @@ export function SeamlessPage({
                       {r.compStatus==='ยังไม่มีข้อมูล'&&<span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-amber-100 text-amber-700">? ยังไม่มีข้อมูล</span>}
                     </td>
                     <td className="px-3 py-2.5 text-center">
-                      {r.compStatus==='ยังไม่มีข้อมูล'
+                      {r.compStatus==='ยังไม่มีข้อมูล'||r.compStatus==='ไม่ชดเชย'
                         ? <span className="text-gray-300 text-[11px]">—</span>
-                        : r.compStatus==='ไม่ชดเชย'
-                          ? <span className="text-gray-300 text-[11px]">—</span>
-                          : r.transferStatus==='โอนแล้ว'
-                            ? <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>
-                            : r.transferStatus==='รอโอน'
-                              ? <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>
-                              : <span className="text-gray-300 text-[11px]">—</span>
+                        : r.transferStatus==='โอนแล้ว'
+                          ? <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>
+                          : r.transferStatus==='รอโอน'
+                            ? <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>
+                            : <span className="text-gray-300 text-[11px]">—</span>
                       }
                     </td>
-                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{r.transferDate?isoToThai(r.transferDate):'—'}</td>
+                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{r.compStatus!=='ไม่ชดเชย'&&r.compStatus!=='ยังไม่มีข้อมูล'&&r.transferDate?isoToThai(r.transferDate):'—'}</td>
                     <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
+                    <td className="px-3 py-2.5 text-[11.5px] text-gray-600 max-w-[200px]"><span className="truncate block" title={r.unit}>{shortenUnit(r.unit)||'—'}</span></td>
                   </tr>
                 })}
               </tbody>
