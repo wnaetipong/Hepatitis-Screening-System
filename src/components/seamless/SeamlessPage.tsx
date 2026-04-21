@@ -943,7 +943,7 @@ export function SeamlessPage({
   const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setFilterUnit('');setPage(1)}
 
   const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
-  const DONUT_RIGHTS=RIGHTS_ORDER.filter(k=>hepRowsFiltered.some(r=>r.rights===k)).map(key=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:RIGHTS_COLOR[key]??'#9ca3af'}))
+  const DONUT_RIGHTS=[...new Set(hepRowsFiltered.map(r=>r.rights||''))].filter(Boolean).map(key=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:RIGHTS_COLOR[key]??'#9ca3af'})).sort((a,b)=>b.value-a.value)
 
   function exportCsv(rows:ScrTableRow[]) {
     const h=['ลำดับ','PID','ชื่อ-สกุล','สิทธิ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ','หน่วยบริการ']
@@ -1100,7 +1100,7 @@ export function SeamlessPage({
             </div>
             <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
               <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
-              {RIGHTS_ORDER.filter(k=>hepRows.some(r=>r.rights===k)).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{RIGHTS_LABEL[k]??k}</option>)}
+              {[...new Set(hepRows.map(r=>r.rights||''))].filter(Boolean).sort((a,b)=>hepRows.filter(r=>r.rights===b).length-hepRows.filter(r=>r.rights===a).length).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{RIGHTS_LABEL[k]??k} ({k})</option>)}
             </select>
             {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
           </div>
