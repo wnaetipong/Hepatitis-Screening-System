@@ -619,6 +619,10 @@ export function SeamlessPage({
     for (const byPid of Object.values(sdb.HBsAg)) {
       for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
+        if (filterRights.length > 0) {
+          const row = hepRows.find(r => r.pid === pid)
+          if (!row || !filterRights.includes(row.rights)) continue
+        }
         const hasDate = pidEntry.dates.some(d => inActiveRange(d))
         if (hasDate) bPids.add(pid)
       }
@@ -626,6 +630,10 @@ export function SeamlessPage({
     for (const byPid of Object.values(sdb.AntiHCV)) {
       for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
+        if (filterRights.length > 0) {
+          const row = hepRows.find(r => r.pid === pid)
+          if (!row || !filterRights.includes(row.rights)) continue
+        }
         const hasDate = pidEntry.dates.some(d => inActiveRange(d))
         if (hasDate) cPids.add(pid)
       }
@@ -663,7 +671,7 @@ export function SeamlessPage({
       totalClaim:hepRowsFiltered.reduce((a,b)=>a+b.total_claim,0),
       reasons:Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,5),
     }
-  },[screeningDB, hepRowsFiltered, filterHsend, inActiveRange])
+  },[screeningDB, hepRowsFiltered, hepRows, filterHsend, filterRights, inActiveRange])
 
   // ── monthlyData (ใหม่) ──────────────────────────────────────────
   // บาร์ บี/ซี มาจาก screeningDB โดยตรง กรองด้วย unit ตาม HSEND mapping
