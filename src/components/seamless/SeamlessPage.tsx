@@ -278,6 +278,56 @@ const RIGHTS_LABEL: Record<string, string> = {
 }
 const RIGHTS_ORDER = ['UCS','WEL','SSS','OFC','LGO']
 const RIGHTS_COLOR: Record<string, string> = { UCS:'#2563eb', WEL:'#059669', SSS:'#f59e0b', OFC:'#8b5cf6', LGO:'#06b6d4' }
+
+// ── Rights group mapping ────────────────────────────────────────────
+// กลุ่มสิทธิสำหรับ Donut chart และ badge ในตาราง
+const RIGHTS_GROUP: Record<string,string> = {
+  // UCS – หลักประกันสุขภาพแห่งชาติ
+  UCS:'UCS', WEL:'UCS', DIS:'UCS', DOF:'UCS', DLG:'UCS', DOL:'UCS', DPV:'UCS',
+  // SSS – ประกันสังคม
+  SSS:'SSS', SSI:'SSS', SIF:'SSS', SIL:'SSS', PSI:'SSS', VSI:'SSS', VIO:'SSS', IOL:'SSS',
+  // GOV – ข้าราชการ/หน่วยงานรัฐ
+  OFC:'GOV', OFL:'GOV', OFB:'GOV', SOF:'GOV', SOB:'GOV', SOL:'GOV', L03:'GOV', L06:'GOV', L08:'GOV', POL:'GOV',
+  // VET – ทหารผ่านศึก
+  VOF:'VET', VSS:'VET', VBF:'VET', VSO:'VET', VIL:'VET', VLB:'VET', VLG:'VET', VOL:'VET',
+  // PRI – ครูเอกชน
+  PVT:'PRI', PSS:'PRI', POF:'PRI', PBF:'PRI', PSO:'PRI', VPT:'PRI', VPS:'PRI', VPO:'PRI', PIL:'PRI', PLB:'PRI', PLG:'PRI',
+  // LGO – สวัสดิการพนักงานส่วนท้องถิ่น
+  LGO:'LGO', LBF:'LGO', L01:'LGO', L02:'LGO', L04:'LGO', L05:'LGO', L07:'LGO', SLG:'LGO', SLB:'LGO', PSL:'LGO',
+  // POL – ข้าราชการการเมือง
+  BFC:'POL', SBF:'POL',
+  // FOR – คนต่างด้าว
+  NRD:'FOR', NRH:'FOR',
+  // THA – คนไทยในต่างประเทศ
+  FRG:'THA',
+  // UNK – ไม่มีสิทธิ/รอพิสูจน์
+  STP:'UNK', '005':'UNK',
+}
+const GROUP_LABEL: Record<string,string> = {
+  UCS:'หลักประกันสุขภาพแห่งชาติ', SSS:'ประกันสังคม',
+  GOV:'ข้าราชการ/หน่วยงานรัฐ', VET:'ทหารผ่านศึก',
+  PRI:'ครูเอกชน', LGO:'สวัสดิการพนักงานส่วนท้องถิ่น',
+  POL:'ข้าราชการการเมือง', FOR:'คนต่างด้าว',
+  THA:'คนไทยในต่างประเทศ', UNK:'ไม่มีสิทธิ/รอพิสูจน์',
+}
+const GROUP_COLOR: Record<string,string> = {
+  UCS:'#2563eb', SSS:'#f59e0b', GOV:'#ca8a04', VET:'#92400e',
+  PRI:'#7c3aed', LGO:'#06b6d4', POL:'#dc2626', FOR:'#6b7280',
+  THA:'#1e3a8a', UNK:'#9ca3af',
+}
+const GROUP_BADGE: Record<string,{bg:string;text:string;label:string}> = {
+  UCS:{bg:'bg-blue-100',  text:'text-blue-700',  label:'บัตรทอง'},
+  SSS:{bg:'bg-amber-100', text:'text-amber-700', label:'ประกันสังคม'},
+  GOV:{bg:'bg-yellow-100',text:'text-yellow-800',label:'ข้าราชการ/รัฐ'},
+  VET:{bg:'bg-orange-100',text:'text-orange-800',label:'ทหารผ่านศึก'},
+  PRI:{bg:'bg-purple-100',text:'text-purple-700',label:'ครูเอกชน'},
+  LGO:{bg:'bg-cyan-100',  text:'text-cyan-700',  label:'สวัสดิการอปท.'},
+  POL:{bg:'bg-red-100',   text:'text-red-700',   label:'ข้าราชการการเมือง'},
+  FOR:{bg:'bg-gray-100',  text:'text-gray-600',  label:'คนต่างด้าว'},
+  THA:{bg:'bg-indigo-100',text:'text-indigo-700',label:'คนไทยต่างประเทศ'},
+  UNK:{bg:'bg-gray-100',  text:'text-gray-400',  label:'—'},
+}
+
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
 // ── HSEND → ชื่อย่อสำหรับแสดง UI ─────────────────────────────────
@@ -701,8 +751,8 @@ export function SeamlessPage({
       const rights=rightsFromInd
       // กรองสิทธิตาม seamless_records
       if(filterRights.length>0&&!filterRights.includes(rights)) continue
-      // ชื่อจาก village (screening data)
-      const name=pidNameMap[pid]??inds[0]?.name??''
+      // ชื่อจาก village → individual (same pid, any type) → fallback ''
+      const name=pidNameMap[pid]??inds[0]?.name??hepRows.find(r=>r.pid===pid)?.name??''
       if(inds.length>0){
         // เลือก 1 Individual record ที่ดีที่สุด: ชดเชย > ไม่ชดเชย > ล่าสุด
         const best=inds.find(r=>r.status==='ชดเชย')??inds.find(r=>r.status==='ไม่ชดเชย')??inds[inds.length-1]
@@ -943,7 +993,11 @@ export function SeamlessPage({
   const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setFilterUnit('');setPage(1)}
 
   const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
-  const DONUT_RIGHTS=[...new Set(hepRowsFiltered.map(r=>r.rights||''))].filter(Boolean).map(key=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:RIGHTS_COLOR[key]??'#9ca3af'})).sort((a,b)=>b.value-a.value)
+  const DONUT_RIGHTS=(()=>{
+    const cnt:Record<string,number>={}
+    for(const r of screeningTableRows){const gk=RIGHTS_GROUP[r.rights??'']??'UNK';cnt[gk]=(cnt[gk]??0)+1}
+    return Object.entries(cnt).map(([k,v])=>({label:GROUP_LABEL[k]??k,value:v,color:GROUP_COLOR[k]??'#9ca3af'})).sort((a,b)=>b.value-a.value)
+  })()
 
   function exportCsv(rows:ScrTableRow[]) {
     const h=['ลำดับ','PID','ชื่อ-สกุล','สิทธิ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ','หน่วยบริการ']
@@ -1209,7 +1263,7 @@ export function SeamlessPage({
                     <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
                     <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name||<span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
-                    <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':r.rights==='LGO'?'bg-cyan-100 text-cyan-700':'bg-gray-100 text-gray-600')}>{r.rights?RIGHTS_LABEL[r.rights]??r.rights:'—'}</span></td>
+                    <td className="px-3 py-2.5 whitespace-nowrap">{(()=>{const gb=GROUP_BADGE[RIGHTS_GROUP[r.rights??'']??'UNK']??GROUP_BADGE.UNK;return<span title={r.rights?RIGHTS_LABEL[r.rights]??r.rights:''} className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',gb.bg,gb.text)}>{gb.label}</span>})()}</td>
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap text-[11.5px]">{r.screenDate||'—'}</td>
                     <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',r.type==='HBsAg'?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{r.type==='HBsAg'?'■ บี':'● ซี'}</span></td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.repNo||<span className="text-gray-300">—</span>}</td>
