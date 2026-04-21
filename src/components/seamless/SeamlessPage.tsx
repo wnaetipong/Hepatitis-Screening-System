@@ -437,7 +437,7 @@ function SummaryCard({ title, rows, color, bgColor, totalOverride, compOverride,
       <div className="grid grid-cols-3 gap-2 mb-4">
         <div className="text-center p-3 rounded-xl" style={{background:bgColor}}><div className="text-[18px] font-black" style={{color}}>{fmtNum(total)}</div><div className="text-[10px] text-gray-500">ทั้งหมด</div></div>
         <div className="text-center p-3 rounded-xl bg-emerald-50"><div className="text-[18px] font-black text-emerald-600">{fmtNum(compCount)}</div><div className="text-[10px] text-gray-500">ชดเชยแล้ว</div></div>
-        <div className="text-center p-3 rounded-xl bg-red-50"><div className="text-[18px] font-black text-red-600">{fmtNum(notCompCount)}</div><div className="text-[10px] text-gray-500">ไม่ชดเชย</div></div>
+        <div className="text-center p-3 rounded-xl bg-gray-50"><div className="text-[18px] font-black text-gray-500">{fmtNum(notCompCount)}</div><div className="text-[10px] text-gray-500">ยังไม่มีข้อมูลชดเชย</div></div>
       </div>
       <div className="mb-3"><div className="flex justify-between text-[11.5px] mb-1"><span className="text-gray-500">อัตราชดเชย</span><span className="font-bold" style={{color}}>{pct.toFixed(1)}%</span></div><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width:`${pct}%`,background:color}}/></div></div>
       <div className="text-[12px] font-bold" style={{color}}>ยอดชดเชยรวม: ฿{fmtBaht(totalComp)}</div>
