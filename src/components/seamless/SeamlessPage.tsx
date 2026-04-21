@@ -220,6 +220,8 @@ function getReasonLabel(note: string, noteOther: string): string {
 }
 
 const RIGHTS_LABEL: Record<string, string> = { UCS:'บัตรทอง', WEL:'สวัสดิการข้าราชการ', SSS:'ประกันสังคม', OFC:'ต่างด้าว', LGO:'อปท.' }
+const RIGHTS_ORDER = ['UCS','WEL','SSS','OFC','LGO']
+const RIGHTS_COLOR: Record<string, string> = { UCS:'#2563eb', WEL:'#059669', SSS:'#f59e0b', OFC:'#8b5cf6', LGO:'#06b6d4' }
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
 // ── HSEND → ชื่อย่อสำหรับแสดง UI ─────────────────────────────────
@@ -587,12 +589,6 @@ export function SeamlessPage({
     return repMap
   },[sumRows, smtRows])
 
-  const filterOptions = useMemo(()=>({
-    years:   [...new Set(indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)).map(r=>parseDateParts(r.service_date)?.year).filter(Boolean))].sort() as string[],
-    hsends:  [...new Set(indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)).map(r=>r.hsend||r.hmain||'').filter(Boolean))].sort(),
-    rights:  [...new Set(indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)).map(r=>r.rights).filter(Boolean))].sort(),
-    sources: [...new Set(indRows.map(r=>r.source_file))],
-  }),[indRows])
 
   const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
 
@@ -805,7 +801,7 @@ export function SeamlessPage({
   const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setPage(1)}
 
   const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
-  const DONUT_RIGHTS=[...new Set(hepRowsFiltered.map(r=>r.rights).filter(Boolean))].slice(0,5).map((key,i)=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:['#2563eb','#059669','#f59e0b','#8b5cf6','#06b6d4'][i]??'#9ca3af'}))
+  const DONUT_RIGHTS=RIGHTS_ORDER.filter(k=>hepRowsFiltered.some(r=>r.rights===k)).map(key=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:RIGHTS_COLOR[key]??'#9ca3af'}))
 
   function exportCsv(rows:IndividualRow[]) {
     const h=['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','HSEND','วันที่ส่ง','วันที่บริการ','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอนเงิน','วันโอน','หมายเหตุ']
@@ -960,10 +956,24 @@ export function SeamlessPage({
               ))}
               {filterHsend.length>0&&<button type="button" onClick={()=>{setFHsend([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
             </div>
-            <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-              <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
-              {filterOptions.rights.map(r=><option key={r} value={r}>{filterRights.includes(r)?'✓ ':''}{RIGHTS_LABEL[r]??r}</option>)}
-            </select>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] font-semibold text-gray-400 pr-0.5">สิทธิ:</span>
+              {RIGHTS_ORDER.filter(k=>hepRows.some(r=>r.rights===k)).map(k=>{
+                const active=filterRights.includes(k)
+                const color=RIGHTS_COLOR[k]??'#9ca3af'
+                return (
+                  <button key={k} type="button"
+                    onClick={()=>{setFRights(p=>p.includes(k)?p.filter(v=>v!==k):[...p,k]);setPage(1)}}
+                    style={active?{background:color,borderColor:color,color:'#fff'}:{borderColor:color+'55'}}
+                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all hover:opacity-80"
+                  >
+                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background:active?'#fff':color}}/>
+                    {RIGHTS_LABEL[k]??k}
+                  </button>
+                )
+              })}
+              {filterRights.length>0&&<button type="button" onClick={()=>{setFRights([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
+            </div>
             {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
           </div>
           {hasFilter&&<div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
