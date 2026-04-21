@@ -125,6 +125,7 @@ export default function DashboardPage() {
           onSumRowsChange={setSumRows}
           onSmtRowsChange={setSmtRows}
           screeningDB={db}
+          village={village}
         />
       )}
 

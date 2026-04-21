@@ -1,7 +1,7 @@
 'use client'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
 import { cn } from '@/lib/utils'
-import type { ScreeningDB } from '@/types'
+import type { ScreeningDB, VillageRow } from '@/types'
 
 // ── Types ──────────────────────────────────────────────────────────
 interface IndividualRow {
@@ -22,6 +22,15 @@ interface SmtRow {
   account_code: string; fund: string; fund_sub: string; amount: number
   delayed: number; deducted: number; guarantee: number; tax: number
   net: number; pending: number; transferred: number; fiscal_year: string; source_file: string
+}
+
+interface ScrTableRow {
+  pid: string; name: string; rights: string
+  type: 'HBsAg' | 'AntiHCV'; screenDate: string; unit: string
+  repNo: string; sendDate: string; totalClaim: number; compensated: number
+  compStatus: 'ชดเชย' | 'ไม่ชดเชย' | 'ยังไม่มีข้อมูล'
+  note: string; noteOther: string; hsend: string
+  transferDate: string; transferStatus: 'โอนแล้ว' | 'รอโอน' | ''
 }
 
 // ── SheetJS ────────────────────────────────────────────────────────
@@ -478,6 +487,7 @@ export function SeamlessPage({
   onSumRowsChange,
   onSmtRowsChange,
   screeningDB,
+  village,
 }: {
   onOpenSettings?: () => void
   sharedSumRows?: { fiscal_year: string; rep_no: string; b_claim: number; b_comp: number; source_file: string }[]
@@ -485,6 +495,7 @@ export function SeamlessPage({
   onSumRowsChange?: (rows: any[]) => void
   onSmtRowsChange?: (rows: any[]) => void
   screeningDB?: ScreeningDB
+  village?: Record<string, VillageRow[]>
 }) {
   const [indRows,  setIndRows]  = useState<IndividualRow[]>([])
   const [_sumRows, _setSumRows] = useState<SummaryRow[]>([])
@@ -517,6 +528,7 @@ export function SeamlessPage({
   const [filterType,   setFType]       = useState('all')
   const [filterHsend,  setFHsend]      = useState<string[]>([])
   const [filterRights, setFRights]     = useState<string[]>([])
+  const [filterUnit,   setFilterUnit]  = useState('')
   const [fiscalYear,   setFiscalYear]  = useState('all')   // ปีงบประมาณ
   const [dateFrom,     setDateFrom]    = useState('')       // ช่วงวันที่ YYYY-MM-DD
   const [dateTo,       setDateTo]      = useState('')
@@ -591,6 +603,81 @@ export function SeamlessPage({
 
 
   const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
+
+  // pid → {name, rights} from village data
+  const pidInfoMap = useMemo(()=>{
+    const m: Record<string,{name:string;rights:string}> = {}
+    for(const rows of Object.values(village??{}))
+      for(const r of rows)
+        m[r.pid]={name:`${r.prefix}${r.fname} ${r.lname}`.trim(),rights:r.right}
+    return m
+  },[village])
+
+  // pid|type → IndividualRow[]
+  const pidIndMap = useMemo(()=>{
+    const m: Record<string,IndividualRow[]> = {}
+    for(const r of hepRows){
+      const key=`${r.pid}|${isHepB(r.service_name)?'HBsAg':'AntiHCV'}`
+      ;(m[key]??=[]).push(r)
+    }
+    return m
+  },[hepRows])
+
+  // Primary table source: ScreeningDB → join Individual → join SMT
+  const screeningTableRows = useMemo(():ScrTableRow[]=>{
+    const sdb=screeningDB??{HBsAg:{},AntiHCV:{}}
+    const allowedUnits:Set<string>|null=filterHsend.length>0
+      ?new Set(filterHsend.flatMap(h=>HSEND_UNIT_MAP[h]??[]))
+      :null
+    const needDateFilter=fiscalYear!=='all'||!!dateFrom||!!dateTo
+    // Collapse per pid|type: keep entry with most-recent valid date
+    const screenMap:Record<string,{date:string;unit:string}>={}
+    for(const type of ['HBsAg','AntiHCV'] as const){
+      for(const [,byPid] of Object.entries(sdb[type])){
+        for(const [pid,entry] of Object.entries(byPid as Record<string,{dates:string[];unit:string}>)){
+          if(allowedUnits!==null&&!allowedUnits.has(entry.unit)) continue
+          const validDates=needDateFilter?entry.dates.filter(d=>inActiveRange(d)):entry.dates
+          if(needDateFilter&&validDates.length===0) continue
+          const lastDate=validDates.at(-1)??entry.dates.at(-1)??''
+          const key=`${pid}|${type}`
+          if(!screenMap[key]||lastDate>screenMap[key].date)
+            screenMap[key]={date:lastDate,unit:entry.unit}
+        }
+      }
+    }
+    const result:ScrTableRow[]=[]
+    for(const [key,scr] of Object.entries(screenMap)){
+      const [pid,type]=key.split('|') as [string,'HBsAg'|'AntiHCV']
+      const info=pidInfoMap[pid]??{name:'',rights:''}
+      if(filterRights.length>0&&!filterRights.includes(info.rights)) continue
+      const inds=pidIndMap[key]??[]
+      const nameFromInd=inds[0]?.name??''
+      const rightsFromInd=inds[0]?.rights??''
+      const name=info.name||nameFromInd
+      const rights=info.rights||rightsFromInd
+      if(inds.length>0){
+        for(const ind of inds){
+          const tr=repToTransfer[ind.rep_no]
+          result.push({
+            pid,name,rights,type,screenDate:scr.date,unit:scr.unit,
+            repNo:ind.rep_no,sendDate:ind.send_date,
+            totalClaim:ind.total_claim,compensated:ind.compensated,
+            compStatus:(ind.status as 'ชดเชย'|'ไม่ชดเชย')||'ยังไม่มีข้อมูล',
+            note:ind.note,noteOther:ind.note_other,hsend:ind.hsend||ind.hmain||'',
+            transferDate:tr?.date??'',transferStatus:tr?'โอนแล้ว':'รอโอน',
+          })
+        }
+      } else {
+        result.push({
+          pid,name,rights,type,screenDate:scr.date,unit:scr.unit,
+          repNo:'',sendDate:'',totalClaim:0,compensated:0,
+          compStatus:'ยังไม่มีข้อมูล',note:'',noteOther:'',hsend:'',
+          transferDate:'',transferStatus:'',
+        })
+      }
+    }
+    return result
+  },[screeningDB,pidInfoMap,pidIndMap,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange,repToTransfer])
 
   const hepRowsFiltered = useMemo(()=>{
     let r=hepRows
@@ -788,24 +875,31 @@ export function SeamlessPage({
     inActiveRange,
   ])
 
-  const filtered = useMemo(()=>{
-    let r=filterType==='hepB'?hepRowsFiltered.filter(x=>isHepB(x.service_name)):filterType==='hepC'?hepRowsFiltered.filter(x=>isHepC(x.service_name)):hepRowsFiltered
-    if(filterStatus!=='all')r=r.filter(x=>x.status===filterStatus)
-    if(search.trim()){const q=search.trim().toLowerCase();r=r.filter(x=>x.name.toLowerCase().includes(q)||x.pid.includes(q)||x.rep_no.toLowerCase().includes(q))}
+  const availableUnits = useMemo(()=>
+    [...new Set(screeningTableRows.map(r=>r.unit).filter(Boolean))].sort()
+  ,[screeningTableRows])
+
+  const filtered = useMemo(():ScrTableRow[]=>{
+    let r=filterType==='hepB'?screeningTableRows.filter(x=>x.type==='HBsAg')
+          :filterType==='hepC'?screeningTableRows.filter(x=>x.type==='AntiHCV')
+          :screeningTableRows
+    if(filterStatus!=='all') r=r.filter(x=>x.compStatus===filterStatus)
+    if(filterUnit) r=r.filter(x=>x.unit===filterUnit)
+    if(search.trim()){const q=search.trim().toLowerCase();r=r.filter(x=>x.name.toLowerCase().includes(q)||x.pid.includes(q)||x.repNo.toLowerCase().includes(q))}
     return r
-  },[hepRowsFiltered,filterType,filterStatus,search])
+  },[screeningTableRows,filterType,filterStatus,filterUnit,search])
 
   const totalPages=Math.ceil(filtered.length/PG)
   const pageRows=filtered.slice((page-1)*PG,page*PG)
   const hasFilter=filterHsend.length>0||filterRights.length>0||fiscalYear!=='all'||!!dateFrom||!!dateTo
-  const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setPage(1)}
+  const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setFilterUnit('');setPage(1)}
 
   const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
   const DONUT_RIGHTS=RIGHTS_ORDER.filter(k=>hepRowsFiltered.some(r=>r.rights===k)).map(key=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:RIGHTS_COLOR[key]??'#9ca3af'}))
 
-  function exportCsv(rows:IndividualRow[]) {
-    const h=['ลำดับ','REP No.','Trans ID','HN','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','HSEND','วันที่ส่ง','วันที่บริการ','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอนเงิน','วันโอน','หมายเหตุ']
-    const d=rows.map((r,i)=>{const tr=repToTransfer[r.rep_no];return[i+1,r.rep_no,r.trans_id,r.hn,r.pid,r.name,r.rights,r.hmain,r.hsend,r.send_date,r.service_date,r.service_name,r.total_claim,r.compensated,r.status,tr?'โอนแล้ว':'รอโอน',tr?.date??'',getReasonLabel(r.note,r.note_other)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')})
+  function exportCsv(rows:ScrTableRow[]) {
+    const h=['ลำดับ','PID','ชื่อ-สกุล','สิทธิ','หน่วยบริการ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ']
+    const d=rows.map((r,i)=>[i+1,r.pid,r.name,r.rights,r.unit,r.screenDate,r.type==='HBsAg'?'ตับอักเสบ บี':'ตับอักเสบ ซี',r.repNo,r.sendDate,r.totalClaim,r.compensated,r.compStatus,r.transferStatus||'—',r.transferDate||'—',getReasonLabel(r.note,r.noteOther)==='ไม่ระบุ'?'—':getReasonLabel(r.note,r.noteOther)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(','))
     const b=new Blob(['\uFEFF'+[h.join(','),...d].join('\n')],{type:'text/csv;charset=utf-8;'})
     const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`seamless_${new Date().toISOString().split('T')[0]}.csv`;a.click();URL.revokeObjectURL(u)
   }
@@ -956,26 +1050,21 @@ export function SeamlessPage({
               ))}
               {filterHsend.length>0&&<button type="button" onClick={()=>{setFHsend([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] font-semibold text-gray-400 pr-0.5">สิทธิ:</span>
-              {RIGHTS_ORDER.filter(k=>hepRows.some(r=>r.rights===k)).map(k=>{
-                const active=filterRights.includes(k)
-                const color=RIGHTS_COLOR[k]??'#9ca3af'
-                return (
-                  <button key={k} type="button"
-                    onClick={()=>{setFRights(p=>p.includes(k)?p.filter(v=>v!==k):[...p,k]);setPage(1)}}
-                    style={active?{background:color,borderColor:color,color:'#fff'}:{borderColor:color+'55'}}
-                    className="flex items-center gap-1 px-2.5 py-1 text-[11px] font-bold rounded-lg border transition-all hover:opacity-80"
-                  >
-                    <span className="w-2 h-2 rounded-full flex-shrink-0" style={{background:active?'#fff':color}}/>
-                    {RIGHTS_LABEL[k]??k}
-                  </button>
-                )
-              })}
-              {filterRights.length>0&&<button type="button" onClick={()=>{setFRights([]);setPage(1)}} className="px-2 py-1 text-[10.5px] text-gray-400 hover:text-red-500 transition-all">ล้าง</button>}
-            </div>
+            <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
+              <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
+              {RIGHTS_ORDER.filter(k=>screeningTableRows.some(r=>r.rights===k)).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{RIGHTS_LABEL[k]??k}</option>)}
+            </select>
             {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
           </div>
+          {/* ชื่อหน่วยบริการ HSEND ที่เลือก */}
+          {filterHsend.length>0&&<div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+            {filterHsend.map(h=>(
+              <div key={h} className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
+                <span className="text-[10.5px] font-black text-blue-400 font-mono">{h}</span>
+                <span className="text-[12px] font-bold text-blue-800">{HSEND_UNIT_NAME[h]??h}</span>
+              </div>
+            ))}
+          </div>}
           {hasFilter&&<div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
             {fiscalYear!=='all'&&<Chip label={`ปีงบ ${fiscalYear}`} onRemove={()=>{setFiscalYear('all');setPage(1)}} color="purple"/>}
             {dateFrom&&<Chip label={`ตั้งแต่ ${dateFrom}`} onRemove={()=>{setDateFrom('');setPage(1)}} color="purple"/>}
@@ -983,18 +1072,6 @@ export function SeamlessPage({
             {filterRights.map(r=><Chip key={r} label={RIGHTS_LABEL[r]??r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
           </div>}
         </div>
-
-        {/* แสดงชื่อหน่วยบริการเมื่อเลือก HSEND */}
-        {filterHsend.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-4">
-            {filterHsend.map(h => (
-              <div key={h} className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 border border-blue-200 rounded-xl">
-                <span className="text-[11px] font-black text-blue-400 font-mono">{h}</span>
-                <span className="text-[13px] font-bold text-blue-800">{HSEND_UNIT_NAME[h] ?? h}</span>
-              </div>
-            ))}
-          </div>
-        )}
 
         {/* KPI cards */}
         <div className="grid grid-cols-4 gap-4 mb-5">
@@ -1053,7 +1130,11 @@ export function SeamlessPage({
             <div className="flex items-center gap-2.5"><div className="w-2 h-2 rounded-full bg-indigo-500"/><div className="font-bold text-gray-900 text-[13.5px]">รายการบริการตับอักเสบ</div></div>
             <div className="flex flex-wrap gap-2">
               <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['hepB','บี'],['hepC','ซี']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFType(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterType===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
-              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFStatus(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterStatus===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
+              <div className="flex gap-1 p-1 bg-gray-100 rounded-lg">{[['all','ทั้งหมด'],['ชดเชย','ชดเชย'],['ไม่ชดเชย','ไม่ชดเชย'],['ยังไม่มีข้อมูล','ยังไม่มีข้อมูล']].map(([v,l])=><button key={v} type="button" onClick={()=>{setFStatus(v);setPage(1)}} className={cn('px-3 py-1 text-[12px] font-medium rounded-md transition-all',filterStatus===v?'bg-white font-bold text-blue-600 shadow-sm':'text-gray-500 hover:text-blue-500')}>{l}</button>)}</div>
+              <select value={filterUnit} onChange={e=>{setFilterUnit(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
+                <option value="">หน่วยบริการ (ทั้งหมด)</option>
+                {availableUnits.map(u=><option key={u} value={u}>{u}</option>)}
+              </select>
               <div className="relative"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none"><circle cx="6.5" cy="6.5" r="4"/><path d="M11 11l2.5 2.5"/></svg><input className="pl-9 pr-3 py-2 text-[12.5px] bg-white border border-gray-200 rounded-lg outline-none focus:border-blue-500 w-[200px]" placeholder="ค้นหาชื่อ, PID, REP No..." value={search} onChange={e=>{setSearch(e.target.value);setPage(1)}}/></div>
               <button type="button" onClick={()=>exportCsv(filtered)} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-emerald-50 border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-100 transition-all"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-3 h-3"><path d="M8 2v8M5 7l3 3 3-3M2 11v1a2 2 0 002 2h8a2 2 0 002-2v-1"/></svg>Export CSV</button>
               <button type="button" onClick={()=>setConfirm('individual')} className="flex items-center gap-1.5 px-3 py-2 text-[12px] font-semibold bg-red-50 border border-red-200 text-red-500 rounded-lg hover:bg-red-100 transition-all">ล้างข้อมูล</button>
@@ -1062,43 +1143,50 @@ export function SeamlessPage({
           <div className="flex flex-wrap gap-4 px-6 py-3 bg-gray-50 border-b border-gray-100 text-[12px]">
             <StatChip dot="#6b7280" label="แสดง" val={fmtNum(filtered.length)} unit="รายการ"/>
             <div className="w-px bg-gray-200 self-stretch"/>
-            <StatChip dot="#059669" label="ชดเชยรวม" val={`฿${fmtBaht(filtered.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit=""/>
+            <StatChip dot="#059669" label="ชดเชยรวม" val={`฿${fmtBaht(filtered.filter(r=>r.compStatus==='ชดเชย').reduce((a,b)=>a+b.compensated,0))}`} unit=""/>
             <div className="w-px bg-gray-200 self-stretch"/>
-            <StatChip dot="#dc2626" label="ไม่ชดเชย" val={fmtNum(filtered.filter(r=>r.status==='ไม่ชดเชย').length)} unit="รายการ"/>
+            <StatChip dot="#dc2626" label="ไม่ชดเชย" val={fmtNum(filtered.filter(r=>r.compStatus==='ไม่ชดเชย').length)} unit="รายการ"/>
+            <div className="w-px bg-gray-200 self-stretch"/>
+            <StatChip dot="#f59e0b" label="ยังไม่มีข้อมูล" val={fmtNum(filtered.filter(r=>r.compStatus==='ยังไม่มีข้อมูล').length)} unit="รายการ"/>
           </div>
           <div className="overflow-x-auto" style={{maxHeight:'60vh'}}>
             <table className="w-full border-collapse text-[12px]">
               <thead className="sticky top-0 z-10 bg-gray-50 border-b-2 border-gray-100">
-                <tr>{['#','REP No.','ชื่อ-สกุล','PID','สิทธิ','วันที่บริการ','วันที่ส่ง','รายการบริการ','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','HSEND','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
+                <tr>{['#','ชื่อ-สกุล','PID','สิทธิ','หน่วยบริการ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ'].map(h=><th key={h} className="px-3 py-2.5 text-[9.5px] font-bold uppercase tracking-wider text-gray-400 text-left whitespace-nowrap">{h}</th>)}</tr>
               </thead>
               <tbody>
-                {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:pageRows.map((r,i)=>{
-                  const reason=getReasonLabel(r.note,r.note_other)
-                  const tr=repToTransfer[r.rep_no]
-                  return <tr key={r.id??`${r.trans_id}-${r.item_seq}-${i}`} className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
+                {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:(pageRows as ScrTableRow[]).map((r,i)=>{
+                  const reason=getReasonLabel(r.note,r.noteOther)
+                  return <tr key={`${r.pid}|${r.type}|${r.repNo}|${i}`} className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
                     <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.rep_no}</td>
-                    <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name}</td>
+                    <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name||<span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
-                    <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':'bg-gray-100 text-gray-600')}>{r.rights||'—'}</span></td>
-                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap">{r.service_date}</td>
-                    <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.send_date}</td>
-                    <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',isHepB(r.service_name)?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{isHepB(r.service_name)?'🟦':'🔵'}<span className="truncate max-w-[180px]">{r.service_name}</span></span></td>
-                    <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.total_claim>0?fmtBaht(r.total_claim):'—'}</td>
+                    <td className="px-3 py-2.5"><span className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold',r.rights==='UCS'?'bg-blue-100 text-blue-700':r.rights==='SSS'?'bg-orange-100 text-orange-700':r.rights==='WEL'?'bg-purple-100 text-purple-700':r.rights==='OFC'?'bg-yellow-100 text-yellow-700':r.rights==='LGO'?'bg-cyan-100 text-cyan-700':'bg-gray-100 text-gray-600')}>{r.rights?RIGHTS_LABEL[r.rights]??r.rights:'—'}</span></td>
+                    <td className="px-3 py-2.5 text-[11.5px] text-gray-600 max-w-[180px]"><span className="truncate block" title={r.unit}>{r.unit||'—'}</span></td>
+                    <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap text-[11.5px]">{r.screenDate||'—'}</td>
+                    <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',r.type==='HBsAg'?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{r.type==='HBsAg'?'■ บี':'● ซี'}</span></td>
+                    <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.repNo||<span className="text-gray-300">—</span>}</td>
+                    <td className="px-3 py-2.5 text-gray-400 text-[11px] whitespace-nowrap">{r.sendDate||'—'}</td>
+                    <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold text-gray-700">{r.totalClaim>0?fmtBaht(r.totalClaim):'—'}</td>
                     <td className="px-3 py-2.5 text-right font-mono text-[11.5px] font-bold"><span className={r.compensated>0?'text-emerald-600':'text-gray-300'}>{r.compensated>0?fmtBaht(r.compensated):'—'}</span></td>
-                    <td className="px-3 py-2.5 text-center"><span className={cn('inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',r.status==='ชดเชย'?'bg-emerald-100 text-emerald-700':'bg-red-100 text-red-600')}>{r.status==='ชดเชย'?'✓ ชดเชย':'✕ ไม่ชดเชย'}</span></td>
                     <td className="px-3 py-2.5 text-center">
-                      {r.status==='ไม่ชดเชย'
+                      {r.compStatus==='ชดเชย'&&<span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-emerald-100 text-emerald-700">✓ ชดเชย</span>}
+                      {r.compStatus==='ไม่ชดเชย'&&<span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-red-100 text-red-600">✕ ไม่ชดเชย</span>}
+                      {r.compStatus==='ยังไม่มีข้อมูล'&&<span className="inline-flex items-center gap-0.5 px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap bg-amber-100 text-amber-700">? ยังไม่มีข้อมูล</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-center">
+                      {r.compStatus==='ยังไม่มีข้อมูล'
                         ? <span className="text-gray-300 text-[11px]">—</span>
-                        : sumRows.length===0
+                        : r.compStatus==='ไม่ชดเชย'
                           ? <span className="text-gray-300 text-[11px]">—</span>
-                          : tr
+                          : r.transferStatus==='โอนแล้ว'
                             ? <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 rounded-full text-[10px] font-bold">✓ โอนแล้ว</span>
-                            : <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>
+                            : r.transferStatus==='รอโอน'
+                              ? <span className="px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full text-[10px] font-bold">⏳ รอโอน</span>
+                              : <span className="text-gray-300 text-[11px]">—</span>
                       }
                     </td>
-                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{r.status!=='ไม่ชดเชย' && tr ? isoToThai(tr.date) : '—'}</td>
-                    <td className="px-3 py-2.5 font-mono text-[11px] text-gray-500">{r.hsend||r.hmain||'—'}</td>
+                    <td className="px-3 py-2.5 text-[11px] text-gray-500 whitespace-nowrap">{r.transferDate?isoToThai(r.transferDate):'—'}</td>
                     <td className="px-3 py-2.5 text-[11px] text-gray-400 max-w-[160px]"><span className="truncate block" title={reason}>{reason==='ไม่ระบุ'?'—':reason}</span></td>
                   </tr>
                 })}
