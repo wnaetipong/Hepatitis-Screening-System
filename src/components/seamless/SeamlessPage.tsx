@@ -421,19 +421,26 @@ function StatChip({ dot, label, val, unit }: { dot:string; label:string; val:str
   return <div className="flex items-center gap-2"><div className="w-2 h-2 rounded-full" style={{background:dot}}/><span className="text-gray-500">{label}</span><span className="font-bold text-gray-800">{val}</span>{unit&&<span className="text-gray-400">{unit}</span>}</div>
 }
 
-function SummaryCard({ title, rows, color, bgColor }: { title:string; rows:IndividualRow[]; color:string; bgColor:string }) {
-  const comp=rows.filter(r=>r.status==='ชดเชย'),notComp=rows.filter(r=>r.status==='ไม่ชดเชย')
-  const pct=rows.length?(comp.length/rows.length*100):0
+function SummaryCard({ title, rows, color, bgColor, totalOverride, compOverride, totalCompOverride }: {
+  title:string; rows:IndividualRow[]; color:string; bgColor:string
+  totalOverride?:number; compOverride?:number; totalCompOverride?:number
+}) {
+  const total = totalOverride ?? rows.length
+  const compCount = compOverride ?? rows.filter(r=>r.status==='ชดเชย').length
+  const notComp = rows.filter(r=>r.status==='ไม่ชดเชย')
+  const notCompCount = total - compCount
+  const pct = total ? (compCount/total*100) : 0
+  const totalComp = totalCompOverride ?? rows.filter(r=>r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full" style={{background:color}}/><div className="font-bold text-gray-900 text-[13px]">{title}</div></div>
       <div className="grid grid-cols-3 gap-2 mb-4">
-        <div className="text-center p-3 rounded-xl" style={{background:bgColor}}><div className="text-[18px] font-black" style={{color}}>{fmtNum(rows.length)}</div><div className="text-[10px] text-gray-500">ทั้งหมด</div></div>
-        <div className="text-center p-3 rounded-xl bg-emerald-50"><div className="text-[18px] font-black text-emerald-600">{fmtNum(comp.length)}</div><div className="text-[10px] text-gray-500">ชดเชยแล้ว</div></div>
-        <div className="text-center p-3 rounded-xl bg-red-50"><div className="text-[18px] font-black text-red-600">{fmtNum(notComp.length)}</div><div className="text-[10px] text-gray-500">ไม่ชดเชย</div></div>
+        <div className="text-center p-3 rounded-xl" style={{background:bgColor}}><div className="text-[18px] font-black" style={{color}}>{fmtNum(total)}</div><div className="text-[10px] text-gray-500">ทั้งหมด</div></div>
+        <div className="text-center p-3 rounded-xl bg-emerald-50"><div className="text-[18px] font-black text-emerald-600">{fmtNum(compCount)}</div><div className="text-[10px] text-gray-500">ชดเชยแล้ว</div></div>
+        <div className="text-center p-3 rounded-xl bg-red-50"><div className="text-[18px] font-black text-red-600">{fmtNum(notCompCount)}</div><div className="text-[10px] text-gray-500">ไม่ชดเชย</div></div>
       </div>
       <div className="mb-3"><div className="flex justify-between text-[11.5px] mb-1"><span className="text-gray-500">อัตราชดเชย</span><span className="font-bold" style={{color}}>{pct.toFixed(1)}%</span></div><div className="h-2 bg-gray-100 rounded-full overflow-hidden"><div className="h-full rounded-full" style={{width:`${pct}%`,background:color}}/></div></div>
-      <div className="text-[12px] font-bold" style={{color}}>ยอดชดเชยรวม: ฿{fmtBaht(comp.reduce((a,b)=>a+b.compensated,0))}</div>
+      <div className="text-[12px] font-bold" style={{color}}>ยอดชดเชยรวม: ฿{fmtBaht(totalComp)}</div>
     </div>
   )
 }
@@ -507,12 +514,47 @@ export function SeamlessPage({
   const [filterType,   setFType]       = useState('all')
   const [filterHsend,  setFHsend]      = useState<string[]>([])
   const [filterRights, setFRights]     = useState<string[]>([])
-  const [filterYear,   setFYear]       = useState('all')
-  const [filterMonth,  setFMonth]      = useState('all')
+  const [fiscalYear,   setFiscalYear]  = useState('all')   // ปีงบประมาณ
+  const [dateFrom,     setDateFrom]    = useState('')       // ช่วงวันที่ YYYY-MM-DD
+  const [dateTo,       setDateTo]      = useState('')
   const [page,         setPage]        = useState(1)
   const [toast,        setToast]       = useState<{msg:string;ok:boolean}|null>(null)
   const [confirmClear, setConfirm]     = useState<'individual'|'summary'|'smt'|null>(null)
   const PG = 50
+
+  // แปลงปีงบ → ช่วงวันที่ (พ.ศ.) เช่น 2567 → 1/10/2566 - 30/9/2567
+  const fiscalYearRange = useMemo(()=>{
+    if (fiscalYear === 'all') return null
+    const y = parseInt(fiscalYear)
+    return { from: `${y-1}/10`, to: `${y}/09` } // YYYY/MM สำหรับเปรียบ
+  }, [fiscalYear])
+
+  // ฟังก์ชันเปรียบ date string d/M/YYYY กับช่วง
+  const inFiscalYear = useCallback((d: string): boolean => {
+    if (!fiscalYearRange) return true
+    const ds = parseDateParts(d)
+    if (!ds) return false
+    const ym = `${ds.year}/${ds.month}`
+    return ym >= fiscalYearRange.from && ym <= fiscalYearRange.to
+  }, [fiscalYearRange])
+
+  // ฟังก์ชันเปรียบ date string d/M/YYYY กับ dateFrom/dateTo (YYYY-MM-DD)
+  const inDateRange = useCallback((d: string): boolean => {
+    if (!dateFrom && !dateTo) return true
+    const ds = parseDateParts(d)
+    if (!ds) return false
+    // แปลง d/M/YYYY → YYYY-MM-DD
+    const iso = `${ds.year}-${ds.month}-${d.split('/')[0].padStart(2,'0')}`
+    if (dateFrom && iso < dateFrom) return false
+    if (dateTo   && iso > dateTo)   return false
+    return true
+  }, [dateFrom, dateTo])
+
+  // ฟังก์ชัน filter date รวม (ใช้ fiscalYear หรือ dateRange อย่างใดอย่างหนึ่ง)
+  const inActiveRange = useCallback((d: string): boolean => {
+    if (dateFrom || dateTo) return inDateRange(d)
+    return inFiscalYear(d)
+  }, [dateFrom, dateTo, inDateRange, inFiscalYear])
 
   const showToast = useCallback((msg:string,ok:boolean)=>{ setToast({msg,ok}); setTimeout(()=>setToast(null),5000) },[])
 
@@ -557,10 +599,9 @@ export function SeamlessPage({
     let r=hepRows
     if(filterHsend.length>0)  r=r.filter(x=>filterHsend.includes(x.hsend||x.hmain||''))
     if(filterRights.length>0) r=r.filter(x=>filterRights.includes(x.rights))
-    if(filterYear!=='all')    r=r.filter(x=>parseDateParts(x.service_date)?.year===filterYear)
-    if(filterMonth!=='all')   r=r.filter(x=>parseDateParts(x.service_date)?.month===filterMonth)
+    if(fiscalYear!=='all' || dateFrom || dateTo) r=r.filter(x=>inActiveRange(x.service_date))
     return r
-  },[hepRows,filterHsend,filterRights,filterYear,filterMonth])
+  },[hepRows,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange])
 
   const stats = useMemo(()=>{
     // ── บี/ซี มาจาก screeningDB (filter HSEND/ปี/เดือน) ──
@@ -577,26 +618,14 @@ export function SeamlessPage({
     for (const byPid of Object.values(sdb.HBsAg)) {
       for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
-        const hasDate = pidEntry.dates.some(d => {
-          const ds = parseDateParts(d)
-          if (!ds) return false
-          if (filterYear !== 'all' && ds.year !== filterYear) return false
-          if (filterMonth !== 'all' && ds.month !== filterMonth) return false
-          return true
-        })
+        const hasDate = pidEntry.dates.some(d => inActiveRange(d))
         if (hasDate) bPids.add(pid)
       }
     }
     for (const byPid of Object.values(sdb.AntiHCV)) {
       for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
-        const hasDate = pidEntry.dates.some(d => {
-          const ds = parseDateParts(d)
-          if (!ds) return false
-          if (filterYear !== 'all' && ds.year !== filterYear) return false
-          if (filterMonth !== 'all' && ds.month !== filterMonth) return false
-          return true
-        })
+        const hasDate = pidEntry.dates.some(d => inActiveRange(d))
         if (hasDate) cPids.add(pid)
       }
     }
@@ -606,16 +635,26 @@ export function SeamlessPage({
     const notComp=hepRowsFiltered.filter(r=>r.status==='ไม่ชดเชย')
     const reasonMap:Record<string,number>={}
     for(const r of notComp){const key=getReasonLabel(r.note,r.note_other);reasonMap[key]=(reasonMap[key]||0)+1}
+    // join PID จาก screeningDB กับ seamless_records เพื่อนับชดเชย
+    const seamlessB = hepRowsFiltered.filter(r=>isHepB(r.service_name))
+    const seamlessC = hepRowsFiltered.filter(r=>isHepC(r.service_name))
+    const compB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').length
+    const compC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').length
+    const totalCompB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
+    const totalCompC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
+
     return {
       total:hepRowsFiltered.length,
       hepB:bPids.size, hepC:cPids.size,
       uniqueB:bPids.size, uniqueC:cPids.size,
+      compB, compC,
       comp:comp.length, notComp:notComp.length,
       totalComp:comp.reduce((a,b)=>a+b.compensated,0),
+      totalCompB, totalCompC,
       totalClaim:hepRowsFiltered.reduce((a,b)=>a+b.total_claim,0),
       reasons:Object.entries(reasonMap).sort((a,b)=>b[1]-a[1]).slice(0,5),
     }
-  },[screeningDB, hepRowsFiltered, filterHsend, filterYear, filterMonth])
+  },[screeningDB, hepRowsFiltered, filterHsend, inActiveRange])
 
   // ── monthlyData (ใหม่) ──────────────────────────────────────────
   // บาร์ บี/ซี มาจาก screeningDB โดยตรง กรองด้วย unit ตาม HSEND mapping
@@ -658,8 +697,7 @@ export function SeamlessPage({
         for (const d of pidEntry.dates) {
           const ds = parseDateParts(d)
           if (!ds) continue
-          if (filterYear !== 'all' && ds.year !== filterYear) continue
-          if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+          if (!inActiveRange(d)) continue
           const k = `${ds.year}/${ds.month}`
           if (!bPids[k]) bPids[k] = new Set()
           bPids[k].add(pid)
@@ -677,8 +715,7 @@ export function SeamlessPage({
         for (const d of pidEntry.dates) {
           const ds = parseDateParts(d)
           if (!ds) continue
-          if (filterYear !== 'all' && ds.year !== filterYear) continue
-          if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+          if (!inActiveRange(d)) continue
           const k = `${ds.year}/${ds.month}`
           if (!cPids[k]) cPids[k] = new Set()
           cPids[k].add(pid)
@@ -712,8 +749,7 @@ export function SeamlessPage({
       if (!r.service_date) continue
       const ds = parseDateParts(r.service_date)
       if (!ds) continue
-      if (filterYear !== 'all' && ds.year !== filterYear) continue
-      if (filterMonth !== 'all' && ds.month !== filterMonth) continue
+      if (!inActiveRange(r.service_date)) continue
       const k = `${ds.year}/${ds.month}`
       if (!pay[k]) pay[k] = { amount: 0 }
       pay[k].amount += r.compensated
@@ -734,10 +770,9 @@ export function SeamlessPage({
     screeningDB,
     hepRows,
     hepRowsFiltered,
-    filterYear,
-    filterMonth,
     filterHsend,
     filterRights,
+    inActiveRange,
   ])
 
   const filtered = useMemo(()=>{
@@ -749,8 +784,8 @@ export function SeamlessPage({
 
   const totalPages=Math.ceil(filtered.length/PG)
   const pageRows=filtered.slice((page-1)*PG,page*PG)
-  const hasFilter=filterHsend.length>0||filterRights.length>0||filterYear!=='all'||filterMonth!=='all'
-  const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFYear('all');setFMonth('all');setPage(1)}
+  const hasFilter=filterHsend.length>0||filterRights.length>0||fiscalYear!=='all'||!!dateFrom||!!dateTo
+  const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setPage(1)}
 
   const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
   const DONUT_RIGHTS=[...new Set(hepRowsFiltered.map(r=>r.rights).filter(Boolean))].slice(0,5).map((key,i)=>({label:RIGHTS_LABEL[key]??key,value:hepRowsFiltered.filter(r=>r.rights===key).length,color:['#2563eb','#059669','#f59e0b','#8b5cf6','#06b6d4'][i]??'#9ca3af'}))
@@ -868,14 +903,34 @@ export function SeamlessPage({
         <div className="bg-white border border-gray-200 rounded-2xl px-5 py-4 mb-5 shadow-sm">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider mr-1">กรองข้อมูล:</span>
-            <select value={filterYear} onChange={e=>{setFYear(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-              <option value="all">ทุกปี</option>
-              {filterOptions.years.map(y=><option key={y} value={y}>ปี {y}</option>)}
+            {/* ปีงบประมาณ */}
+            <select
+              value={fiscalYear}
+              onChange={e=>{setFiscalYear(e.target.value);setDateFrom('');setDateTo('');setPage(1)}}
+              className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
+              <option value="all">ทุกปีงบ</option>
+              {['2567','2568','2569','2570'].map(y=><option key={y} value={y}>ปีงบ {y}</option>)}
             </select>
-            <select value={filterMonth} onChange={e=>{setFMonth(e.target.value);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
-              <option value="all">ทุกเดือน</option>
-              {Array.from({length:12},(_,i)=>i+1).map(m=><option key={m} value={String(m).padStart(2,'0')}>{MONTH_TH[m]}</option>)}
-            </select>
+            {/* ช่วงวันที่อิสระ */}
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-gray-400">หรือ</span>
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={e=>{setDateFrom(e.target.value);setFiscalYear('all');setPage(1)}}
+                className="px-2.5 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                placeholder="วันเริ่มต้น"
+              />
+              <span className="text-[11px] text-gray-400">—</span>
+              <input
+                type="date"
+                value={dateTo}
+                onChange={e=>{setDateTo(e.target.value);setFiscalYear('all');setPage(1)}}
+                className="px-2.5 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
+                placeholder="วันสิ้นสุด"
+              />
+              {(dateFrom||dateTo)&&<button type="button" onClick={()=>{setDateFrom('');setDateTo('');setPage(1)}} className="text-[10.5px] text-gray-400 hover:text-red-500">✕</button>}
+            </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-[11px] text-gray-400 font-semibold">HSEND:</span>
               {Object.keys(HSEND_UNIT_MAP).map(h=>(
@@ -895,8 +950,9 @@ export function SeamlessPage({
             {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
           </div>
           {hasFilter&&<div className="flex flex-wrap gap-1.5 mt-3 pt-3 border-t border-gray-100">
-            {filterYear!=='all'&&<Chip label={`ปี ${filterYear}`} onRemove={()=>{setFYear('all');setPage(1)}} color="purple"/>}
-            {filterMonth!=='all'&&<Chip label={`เดือน ${MONTH_TH[parseInt(filterMonth)]}`} onRemove={()=>{setFMonth('all');setPage(1)}} color="purple"/>}
+            {fiscalYear!=='all'&&<Chip label={`ปีงบ ${fiscalYear}`} onRemove={()=>{setFiscalYear('all');setPage(1)}} color="purple"/>}
+            {dateFrom&&<Chip label={`ตั้งแต่ ${dateFrom}`} onRemove={()=>{setDateFrom('');setPage(1)}} color="purple"/>}
+            {dateTo&&<Chip label={`ถึง ${dateTo}`} onRemove={()=>{setDateTo('');setPage(1)}} color="purple"/>}
             {filterRights.map(r=><Chip key={r} label={RIGHTS_LABEL[r]??r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
           </div>}
         </div>
@@ -939,8 +995,8 @@ export function SeamlessPage({
               <span className="font-bold text-gray-900 text-[13px]">การตรวจคัดกรองไวรัสตับอักเสบ</span>
             </div>
             <CompareBarChart items={[
-              {label:'ไวรัสตับอักเสบ บี (HBsAg)', total:stats.hepB, comp:hepRowsFiltered.filter(r=>isHepB(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueB, color:'#2563eb'},
-              {label:'ไวรัสตับอักเสบ ซี (Anti-HCV)', total:stats.hepC, comp:hepRowsFiltered.filter(r=>isHepC(r.service_name)&&r.status==='ชดเชย').length, unique:stats.uniqueC, color:'#0891b2'},
+              {label:'ไวรัสตับอักเสบ บี (HBsAg)', total:stats.hepB, comp:stats.compB, unique:stats.uniqueB, color:'#2563eb'},
+              {label:'ไวรัสตับอักเสบ ซี (Anti-HCV)', total:stats.hepC, comp:stats.compC, unique:stats.uniqueC, color:'#0891b2'},
             ]}/>
             <div className="mt-4 pt-3 border-t border-gray-100 grid grid-cols-2 gap-3 text-[11.5px]">
               <div className="flex justify-between"><span className="text-gray-500">รวมทั้งหมด</span><span className="font-bold">{fmtNum(stats.total)} รายการ</span></div>
@@ -955,8 +1011,8 @@ export function SeamlessPage({
 
         {/* Summary + Reasons */}
         <div className="grid grid-cols-3 gap-4 mb-5">
-          <SummaryCard title="ตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff"/>
-          <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff"/>
+          <SummaryCard title="ตับอักเสบ บี" rows={hepRowsFiltered.filter(r=>isHepB(r.service_name))} color="#2563eb" bgColor="#eff6ff" totalOverride={stats.hepB} compOverride={stats.compB} totalCompOverride={stats.totalCompB}/>
+          <SummaryCard title="ตับอักเสบ ซี" rows={hepRowsFiltered.filter(r=>isHepC(r.service_name))} color="#0891b2" bgColor="#ecfeff" totalOverride={stats.hepC} compOverride={stats.compC} totalCompOverride={stats.totalCompC}/>
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-red-500"/><span className="font-bold text-gray-900 text-[13px]">สาเหตุไม่ชดเชย ({fmtNum(stats.notComp)})</span></div>
             <DonutChart size={110} slices={DONUT_REASONS}/>
