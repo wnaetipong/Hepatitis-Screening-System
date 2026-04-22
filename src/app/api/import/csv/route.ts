@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getExistingPidDates, insertScreenings } from '@/lib/db'
+import { insertScreenings } from '@/lib/db'
 import { parseCSVText, formatThaiDate } from '@/lib/utils'
 import type { ScreeningType, ScreeningRow } from '@/types'
 
@@ -21,35 +21,36 @@ export async function POST(req: NextRequest) {
     }
 
     const rows = parseCSVText(body.csvText)
-    const existing = await getExistingPidDates(body.type, body.year)
     const now = new Date().toISOString()
 
-    const toInsert: ScreeningRow[] = []
-    let skipped = 0, skippedEmpty = 0
+    const toUpsert: ScreeningRow[] = []
+    const seenKeys = new Set<string>()
+    let skippedEmpty = 0
 
     for (const row of rows) {
       // รองรับทั้ง column ชื่อไทย (KTB format) และ English format เดิม
       const pid  = (row['หมายเลขบัตรประชาชน'] || row['pid'] || '').replace(/\t/g, '').trim()
       const date = formatThaiDate(row['วันที่รับบริการ'] || '')
       const unit = (row['หน่วยตรวจ'] || row['หน่วยบริการ'] || '').trim()
-      // ชื่อ-นามสกุล จาก KTB CSV
       const name = (row['ชื่อ-นามสกุล'] || row['name'] || '').trim()
 
       if (!pid || !date) { skippedEmpty++; continue }
 
+      // dedup ภายใน batch เดียวกัน
       const key = `${pid}|${date}`
-      if (existing.has(key)) { skipped++; continue }
+      if (seenKeys.has(key)) continue
+      seenKeys.add(key)
 
-      toInsert.push({ pid, type: body.type, year: body.year, date, unit, name, imported_at: now })
-      existing.add(key) // prevent duplicate within same batch
+      // upsert ทุก row (ignoreDuplicates: false) → update name แม้ record มีอยู่แล้ว
+      toUpsert.push({ pid, type: body.type, year: body.year, date, unit, name, imported_at: now })
     }
 
-    const imported = await insertScreenings(toInsert)
+    const imported = await insertScreenings(toUpsert)
 
     return NextResponse.json({
       ok: true,
       imported,
-      skipped,
+      skipped: 0,
       skippedEmpty,
       total: rows.length,
     })
