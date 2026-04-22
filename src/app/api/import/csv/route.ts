@@ -28,16 +28,19 @@ export async function POST(req: NextRequest) {
     let skipped = 0, skippedEmpty = 0
 
     for (const row of rows) {
+      // รองรับทั้ง column ชื่อไทย (KTB format) และ English format เดิม
       const pid  = (row['หมายเลขบัตรประชาชน'] || row['pid'] || '').replace(/\t/g, '').trim()
       const date = formatThaiDate(row['วันที่รับบริการ'] || '')
-      const unit = (row['หน่วยตรวจ'] || '').trim()
+      const unit = (row['หน่วยตรวจ'] || row['หน่วยบริการ'] || '').trim()
+      // ชื่อ-นามสกุล จาก KTB CSV
+      const name = (row['ชื่อ-นามสกุล'] || row['name'] || '').trim()
 
       if (!pid || !date) { skippedEmpty++; continue }
 
       const key = `${pid}|${date}`
       if (existing.has(key)) { skipped++; continue }
 
-      toInsert.push({ pid, type: body.type, year: body.year, date, unit, imported_at: now })
+      toInsert.push({ pid, type: body.type, year: body.year, date, unit, name, imported_at: now })
       existing.add(key) // prevent duplicate within same batch
     }
 

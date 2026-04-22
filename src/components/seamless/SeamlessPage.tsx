@@ -1,6 +1,6 @@
 'use client'
 import { useState, useMemo, useCallback, useRef, useEffect } from 'react'
-import { cn } from '@/lib/utils'
+import { cn, getScreeningName } from '@/lib/utils'
 import type { ScreeningDB, VillageRow } from '@/types'
 
 // ── Types ──────────────────────────────────────────────────────────
@@ -232,105 +232,9 @@ function getReasonLabel(note: string, noteOther: string): string {
   return cleaned || noteOther?.trim() || 'ไม่ระบุ'
 }
 
-const RIGHTS_LABEL: Record<string, string> = {
-  UCS:'สิทธิหลักประกันสุขภาพแห่งชาติ(UCS)', WEL:'สิทธิหลักประกันสุขภาพแห่งชาติ ประเภทมีสิทธิย่อย(WEL)',
-  SSS:'สิทธิประกันสังคม', SSI:'สิทธิประกันสังคมกรณีทุพพลภาพ',
-  OFC:'สิทธิข้าราชการ/สิทธิรัฐวิสาหกิจ', SOF:'สิทธิประกันสังคม/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ',
-  SBF:'สิทธิประกันสังคม/สิทธิข้าราชการการเมือง', FRG:'สถานะคนไทยในต่างประเทศ',
-  BFC:'สิทธิข้าราชการการเมือง', NRD:'สถานะคนต่างด้าว',
-  VOF:'สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ', VSS:'สิทธิประกันสังคม/สิทธิทหารผ่านศึก',
-  VBF:'สิทธิทหารผ่านศึก/สิทธิข้าราชการการเมือง', VSO:'สิทธิประกันสังคม/สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ',
-  PVT:'สิทธิครูเอกชน', PSS:'สิทธิประกันสังคม/สิทธิครูเอกชน',
-  POF:'สิทธิครูเอกชน/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ', PBF:'สิทธิครูเอกชน/สิทธิข้าราชการการเมือง',
-  PSO:'สิทธิประกันสังคม/สิทธิครูเอกชน/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ', VPT:'สิทธิครูเอกชน/สิทธิทหารผ่านศึก',
-  VPS:'สิทธิครูเอกชน/สิทธิประกันสังคม/สิทธิทหารผ่านศึก', VPO:'สิทธิครูเอกชน/สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ',
-  SIF:'สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ', PSI:'สิทธิครูเอกชน/สิทธิประกันสังคมกรณีทุพพลภาพ',
-  VIO:'สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ', VSI:'สิทธิประกันสังคมแบบทุพพลภาพ/สิทธิทหารผ่านศึก',
-  STP:'บุคคลผู้มีปัญหาสถานะและสิทธิ', '':'บุคคลที่ยังไม่ลงทะเบียนตามมาตรา 6', '005':'บุคคลรอพิสูจน์สถานะ',
-  IOL:'สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  L01:'สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  L02:'สิทธิครูเอกชน/สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง',
-  L03:'สิทธิครูเอกชน/สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  L04:'สิทธิครูเอกชน/สิทธิประกันสังคม/สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  L05:'สิทธิประกันสังคม/สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง',
-  L06:'สิทธิประกันสังคม/สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  L07:'สิทธิประกันสังคม/สิทธิครูเอกชน/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง',
-  L08:'สิทธิประกันสังคม/สิทธิครูเอกชน/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  LBF:'สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง', LGO:'สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  OFL:'สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  PIL:'สิทธิครูเอกชน/สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  PLB:'สิทธิครูเอกชน/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง', PLG:'สิทธิครูเอกชน/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  POL:'สิทธิครูเอกชน/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น', PSL:'สิทธิประกันสังคม/สิทธิครูเอกชน/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  SIL:'สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  SLB:'สิทธิประกันสังคม/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง', SLG:'สิทธิประกันสังคม/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  SOL:'สิทธิประกันสังคม/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  VIL:'สิทธิประกันสังคมกรณีทุพพลภาพ/สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  VLB:'สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น/สิทธิข้าราชการการเมือง', VLG:'สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  VOL:'สิทธิทหารผ่านศึก/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  VPL:'สิทธิครูเอกชน/สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น', VSL:'สิทธิประกันสังคม/สิทธิทหารผ่านศึก/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  OBV:'สิทธิข้าราชการ/สิทธิข้าราชการการเมือง/สิทธิทหารผ่านศึก', OFB:'สิทธิข้าราชการ/สิทธิข้าราชการการเมือง',
-  SOB:'สิทธิประกันสังคม/สิทธิข้าราชการ/สิทธิข้าราชการการเมือง',
-  NRH:'สิทธิบุคคลต่างด้าว (ซื้อประกันสุขภาพ)', DIS:'สิทธิหลักประกันสุขภาพแห่งชาติ (ผู้ประกันตนคนพิการ)',
-  DOF:'สิทธิหลักประกันสุขภาพแห่งชาติ (ผู้ประกันตนคนพิการ)/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ',
-  DLG:'สิทธิหลักประกันสุขภาพแห่งชาติ (ผู้ประกันตนคนพิการ)/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  DOL:'สิทธิหลักประกันสุขภาพแห่งชาติ (ผู้ประกันตนคนพิการ)/สิทธิข้าราชการ/สิทธิหน่วยงานรัฐ/สิทธิสวัสดิการพนักงานส่วนท้องถิ่น',
-  DPV:'สิทธิหลักประกันสุขภาพแห่งชาติ (ผู้ประกันตนคนพิการ)/สิทธิครูเอกชน',
-}
-const RIGHTS_ORDER = ['UCS','WEL','SSS','OFC','LGO']
-const RIGHTS_COLOR: Record<string, string> = { UCS:'#2563eb', WEL:'#059669', SSS:'#f59e0b', OFC:'#8b5cf6', LGO:'#06b6d4' }
-
-// ── Rights group mapping ────────────────────────────────────────────
-// กลุ่มสิทธิสำหรับ Donut chart และ badge ในตาราง
-const RIGHTS_GROUP: Record<string,string> = {
-  // UCS – หลักประกันสุขภาพแห่งชาติ
-  UCS:'UCS', WEL:'UCS', DIS:'UCS', DOF:'UCS', DLG:'UCS', DOL:'UCS', DPV:'UCS',
-  // SSS – ประกันสังคม
-  SSS:'SSS', SSI:'SSS', SIF:'SSS', SIL:'SSS', PSI:'SSS', VSI:'SSS', VIO:'SSS', IOL:'SSS',
-  // GOV – ข้าราชการ/หน่วยงานรัฐ
-  OFC:'GOV', OFL:'GOV', OFB:'GOV', SOF:'GOV', SOB:'GOV', SOL:'GOV', L03:'GOV', L06:'GOV', L08:'GOV', POL:'GOV',
-  // VET – ทหารผ่านศึก
-  VOF:'VET', VSS:'VET', VBF:'VET', VSO:'VET', VIL:'VET', VLB:'VET', VLG:'VET', VOL:'VET',
-  // PRI – ครูเอกชน
-  PVT:'PRI', PSS:'PRI', POF:'PRI', PBF:'PRI', PSO:'PRI', VPT:'PRI', VPS:'PRI', VPO:'PRI', PIL:'PRI', PLB:'PRI', PLG:'PRI',
-  // LGO – สวัสดิการพนักงานส่วนท้องถิ่น
-  LGO:'LGO', LBF:'LGO', L01:'LGO', L02:'LGO', L04:'LGO', L05:'LGO', L07:'LGO', SLG:'LGO', SLB:'LGO', PSL:'LGO',
-  // POL – ข้าราชการการเมือง
-  BFC:'POL', SBF:'POL',
-  // FOR – คนต่างด้าว
-  NRD:'FOR', NRH:'FOR',
-  // THA – คนไทยในต่างประเทศ
-  FRG:'THA',
-  // UNK – ไม่มีสิทธิ/รอพิสูจน์
-  STP:'UNK', '005':'UNK',
-}
-const GROUP_LABEL: Record<string,string> = {
-  UCS:'หลักประกันสุขภาพแห่งชาติ', SSS:'ประกันสังคม',
-  GOV:'ข้าราชการ/หน่วยงานรัฐ', VET:'ทหารผ่านศึก',
-  PRI:'ครูเอกชน', LGO:'สวัสดิการพนักงานส่วนท้องถิ่น',
-  POL:'ข้าราชการการเมือง', FOR:'คนต่างด้าว',
-  THA:'คนไทยในต่างประเทศ', UNK:'ไม่มีสิทธิ/รอพิสูจน์',
-}
-const GROUP_COLOR: Record<string,string> = {
-  UCS:'#2563eb', SSS:'#f59e0b', GOV:'#ca8a04', VET:'#92400e',
-  PRI:'#7c3aed', LGO:'#06b6d4', POL:'#dc2626', FOR:'#6b7280',
-  THA:'#1e3a8a', UNK:'#9ca3af',
-}
-const GROUP_BADGE: Record<string,{bg:string;text:string;label:string}> = {
-  UCS:{bg:'bg-blue-100',  text:'text-blue-700',  label:'บัตรทอง'},
-  SSS:{bg:'bg-amber-100', text:'text-amber-700', label:'ประกันสังคม'},
-  GOV:{bg:'bg-yellow-100',text:'text-yellow-800',label:'ข้าราชการ/รัฐ'},
-  VET:{bg:'bg-orange-100',text:'text-orange-800',label:'ทหารผ่านศึก'},
-  PRI:{bg:'bg-purple-100',text:'text-purple-700',label:'ครูเอกชน'},
-  LGO:{bg:'bg-cyan-100',  text:'text-cyan-700',  label:'สวัสดิการอปท.'},
-  POL:{bg:'bg-red-100',   text:'text-red-700',   label:'ข้าราชการการเมือง'},
-  FOR:{bg:'bg-gray-100',  text:'text-gray-600',  label:'คนต่างด้าว'},
-  THA:{bg:'bg-indigo-100',text:'text-indigo-700',label:'คนไทยต่างประเทศ'},
-  UNK:{bg:'bg-gray-100',  text:'text-gray-400',  label:'—'},
-}
-
 const MONTH_TH = ['','ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.']
 
-// ── HSEND → ชื่อย่อสำหรับแสดง UI ─────────────────────────────────
+// ── HSEND → ชื่อย่อ ──────────────────────────────────────────────
 const HSEND_UNIT_NAME: Record<string, string> = {
   '07624': 'รพ.สต.บ้านหนองยาง',
   '07625': 'รพ.สต.หนองปลาไหล',
@@ -342,22 +246,54 @@ const HSEND_UNIT_NAME: Record<string, string> = {
   '11258': 'รพ.วังทรายพูน',
 }
 
-// ── HSEND → unit name mapping ──────────────────────────────────────
 const HSEND_UNIT_MAP: Record<string, string[]> = {
-  '07624': [
-    'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านหนองยาง',
-    'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านหนองยาง วังทรายพูน',
-  ],
+  '07624': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านหนองยาง','โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านหนองยาง วังทรายพูน'],
   '07625': ['โรงพยาบาลส่งเสริมสุขภาพตำบลหนองปลาไหล'],
   '07626': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านวังทับไทร'],
-  '07627': [
-    'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคลองสะแก-ป่าหวาย',
-    'โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคลองสะแก-ปลาหวาย',
-  ],
+  '07627': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคลองสะแก-ป่าหวาย','โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านคลองสะแก-ปลาหวาย'],
   '07628': ['โรงพยาบาลส่งเสริมสุขภาพตำบลบ้านยางสามต้น'],
   '07629': ['โรงพยาบาลส่งเสริมสุขภาพตำบลหนองพระ'],
   '07630': ['โรงพยาบาลส่งเสริมสุขภาพตำบลหนองปล้อง'],
   '11258': ['โรงพยาบาลวังทรายพูน'],
+}
+
+// ── สิทธิ: 4 กลุ่ม ────────────────────────────────────────────────
+const RIGHTS_GROUP: Record<string,string> = {
+  // UC – หลักประกันสุขภาพแห่งชาติ
+  UCS:'UC', WEL:'UC', DIS:'UC', DOF:'UC', DLG:'UC', DOL:'UC', DPV:'UC',
+  // SSS – ประกันสังคม
+  SSS:'SSS', SSI:'SSS', SIF:'SSS', SIL:'SSS', PSI:'SSS', VSI:'SSS', VIO:'SSS', IOL:'SSS',
+  PSL:'SSS', VSL:'SSS',
+  // OFC – ข้าราชการ/หน่วยงานรัฐ (รวม GOV/VET/PRI/POL/FOR/THA)
+  OFC:'OFC', OFL:'OFC', OFB:'OFC', SOF:'OFC', SOB:'OFC', SOL:'OFC', L03:'OFC', L06:'OFC', L08:'OFC',
+  VOF:'OFC', VSS:'OFC', VBF:'OFC', VSO:'OFC', VIL:'OFC', VLB:'OFC', VLG:'OFC', VOL:'OFC',
+  PVT:'OFC', PSS:'OFC', POF:'OFC', PBF:'OFC', PSO:'OFC', VPT:'OFC', VPS:'OFC', VPO:'OFC',
+  PIL:'OFC', PLB:'OFC', PLG:'OFC',
+  L01:'OFC', L02:'OFC', L04:'OFC', L05:'OFC', L07:'OFC', BFC:'OFC', SBF:'OFC', OBV:'OFC',
+  NRD:'OFC', NRH:'OFC', FRG:'OFC', STP:'OFC', POL:'OFC', '005':'OFC',
+  // LGO – สวัสดิการพนักงานส่วนท้องถิ่น
+  LGO:'LGO', LBF:'LGO', SLG:'LGO', SLB:'LGO',
+}
+const GROUP_LABEL: Record<string,string> = {
+  UC:  'หลักประกันสุขภาพแห่งชาติ (UC)',
+  SSS: 'ประกันสังคม (SSS)',
+  OFC: 'ข้าราชการ/หน่วยงานรัฐ (OFC)',
+  LGO: 'สวัสดิการพนักงานส่วนท้องถิ่น (LGO)',
+  UNK: 'ไม่มีสิทธิ/รอพิสูจน์/อื่นๆ',
+}
+const GROUP_COLOR: Record<string,string> = {
+  UC:  '#2563eb',
+  SSS: '#f59e0b',
+  OFC: '#ca8a04',
+  LGO: '#06b6d4',
+  UNK: '#9ca3af',
+}
+const GROUP_BADGE: Record<string,{bg:string;text:string;label:string}> = {
+  UC:  { bg:'bg-blue-100',  text:'text-blue-700',  label:'UC'  },
+  SSS: { bg:'bg-amber-100', text:'text-amber-700', label:'SSS' },
+  OFC: { bg:'bg-yellow-100',text:'text-yellow-800',label:'OFC' },
+  LGO: { bg:'bg-cyan-100',  text:'text-cyan-700',  label:'LGO' },
+  UNK: { bg:'bg-gray-100',  text:'text-gray-400',  label:'—'   },
 }
 
 // ── Sub-components ─────────────────────────────────────────────────
@@ -462,7 +398,7 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
         <rect x={PAD.l} y={PAD.t} width={chartW} height={chartH} fill="#f9fafb" rx="6"/>
         {Array.from({length:5},(_,i)=>{const pct=i/4,y=PAD.t+chartH*(1-pct);return(<g key={i}><line x1={PAD.l} y1={y} x2={PAD.l+chartW} y2={y} stroke={i===0?'#d1d5db':'#e5e7eb'} strokeWidth={i===0?1.5:1} strokeDasharray={i>0?'4,3':undefined}/><text x={PAD.l-8} y={y+4} textAnchor="end" fontSize="10" fill="#9ca3af">{fmtK(Math.round(niceL*pct))}</text>{hasSmt&&<text x={PAD.l+chartW+8} y={y+4} textAnchor="start" fontSize="10" fill="#6ee7b7">{fmtK(Math.round(niceR*pct))}</text>}</g>)})}
         {data.map((d,i)=>{if(i===0)return null;const pY=data[i-1].label.split('/')[0],tY=d.label.split('/')[0];if(pY===tY)return null;const x=PAD.l+slotW*i;return(<g key={`yr-${i}`}><line x1={x} y1={PAD.t} x2={x} y2={PAD.t+chartH} stroke="#9ca3af" strokeWidth="1" strokeDasharray="5,3"/><rect x={x+3} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={x+22} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {tY}</text></g>)})}
-        <g clipPath="url(#cc)">{data.map((d,i)=>{const cx=PAD.l+slotW*i+slotW/2,hB=Math.max(0,(d.b/niceL)*chartH),hC=Math.max(0,(d.c/niceL)*chartH),isH=hov===i;return(<g key={d.label} opacity={hov!==null&&!isH?0.35:1} style={{transition:'opacity .15s'}} onMouseEnter={()=>setHov(i)}>{isH&&<rect x={PAD.l+slotW*i} y={PAD.t} width={slotW} height={chartH} fill="#eff6ff" opacity="0.7"/>}<rect x={cx-bw-1.5} y={PAD.t+chartH-hB} width={bw} height={hB} fill="url(#gb)" rx="3" filter="url(#ds)"/><rect x={cx+1.5} y={PAD.t+chartH-hC} width={bw} height={hC} fill="url(#gc)" rx="3" filter="url(#ds)"/></g>)})}</g>
+        <g clipPath="url(#cc)">{data.map((d,i)=>{const cx2=PAD.l+slotW*i+slotW/2,hB=Math.max(0,(d.b/niceL)*chartH),hC=Math.max(0,(d.c/niceL)*chartH),isH=hov===i;return(<g key={d.label} opacity={hov!==null&&!isH?0.35:1} style={{transition:'opacity .15s'}} onMouseEnter={()=>setHov(i)}>{isH&&<rect x={PAD.l+slotW*i} y={PAD.t} width={slotW} height={chartH} fill="#eff6ff" opacity="0.7"/>}<rect x={cx2-bw-1.5} y={PAD.t+chartH-hB} width={bw} height={hB} fill="url(#gb)" rx="3" filter="url(#ds)"/><rect x={cx2+1.5} y={PAD.t+chartH-hC} width={bw} height={hC} fill="url(#gc)" rx="3" filter="url(#ds)"/></g>)})}</g>
         {hasSmt&&<><polygon points={areaPoints} fill="url(#ga)" clipPath="url(#cc)"/>
         <polyline points={linePoints} fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" clipPath="url(#cc)"/>
         {data.map((d,i)=>{const x=PAD.l+slotW*i+slotW/2,y=PAD.t+chartH*(1-d.amount/niceR),isH=hov===i;return(<circle key={i} cx={x} cy={y} r={isH?6:d.amount>0?3.5:0} fill={isH?'#059669':'#fff'} stroke="#10b981" strokeWidth="2" style={{transition:'r .1s'}} onMouseEnter={()=>setHov(i)}/>)})}</>}
@@ -473,7 +409,7 @@ function MonthlyChart({ data, hasSmt=false }: { data: { label:string; b:number; 
             onMouseEnter={()=>setHov(i)}/>
         ))}
         {data.length>0&&<g><rect x={PAD.l+2} y={PAD.t+2} width={38} height={14} rx="3" fill="#f3f4f6"/><text x={PAD.l+21} y={PAD.t+13} textAnchor="middle" fontSize="9.5" fill="#6b7280" fontWeight="600">ปี {data[0].label.split('/')[0]}</text></g>}
-        {hov!==null&&(()=>{const d=data[hov],cx=PAD.l+slotW*hov+slotW/2,tw=168,th=134,tx=Math.max(PAD.l+4,Math.min(cx-tw/2,W-tw-4)),_tyAbove=PAD.t-th-8,ty=_tyAbove>=PAD.t?_tyAbove:PAD.t+8,mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี (คัดกรอง): <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี (คัดกรอง): <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><text x={tx+10} y={ty+75} fontSize="9.5" fill="#6b7280">✓ ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+89} fontSize="9.5" fill="#6b7280">✕ ไม่ชดเชย: <tspan fontWeight="700" fill="#ef4444">{d.notComp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+103} fontSize="9.5" fill="#6b7280">⏳ รอประมวลผล: <tspan fontWeight="700" fill="#f59e0b">{d.pending.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+110} x2={tx+tw-10} y2={ty+110} stroke="#f3f4f6" strokeWidth="1"/>{d.amount>0&&<text x={tx+10} y={ty+124} fontSize="9" fill="#059669" fontWeight="600">฿{d.amount.toLocaleString()} (ชดเชยรวม)</text>}</g>)})()}
+        {hov!==null&&(()=>{const d=data[hov],cx2=PAD.l+slotW*hov+slotW/2,tw=168,th=134,tx=Math.max(PAD.l+4,Math.min(cx2-tw/2,W-tw-4)),_tyAbove=PAD.t-th-8,ty=_tyAbove>=PAD.t?_tyAbove:PAD.t+8,mm=parseInt(d.label.split('/')[1]);return(<g><rect x={tx} y={ty} width={tw} height={th} rx="10" fill="white" stroke="#e5e7eb" strokeWidth="1.5" filter="url(#ds)"/><rect x={tx} y={ty} width={tw} height={26} rx="10" fill="#1e40af"/><rect x={tx} y={ty+16} width={tw} height={10} fill="#1e40af"/><text x={tx+tw/2} y={ty+17} textAnchor="middle" fontSize="11" fontWeight="700" fill="white">{MONTH_TH[mm]} {d.label.split('/')[0]}</text><rect x={tx+10} y={ty+33} width="8" height="8" fill="url(#gb)" rx="1.5"/><text x={tx+22} y={ty+41} fontSize="9.5" fill="#6b7280">บี (คัดกรอง): <tspan fontWeight="700" fill="#1d4ed8">{d.b.toLocaleString()}</tspan></text><rect x={tx+10} y={ty+48} width="8" height="8" fill="url(#gc)" rx="1.5"/><text x={tx+22} y={ty+56} fontSize="9.5" fill="#6b7280">ซี (คัดกรอง): <tspan fontWeight="700" fill="#0891b2">{d.c.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+63} x2={tx+tw-10} y2={ty+63} stroke="#f3f4f6" strokeWidth="1"/><text x={tx+10} y={ty+75} fontSize="9.5" fill="#6b7280">✓ ชดเชย: <tspan fontWeight="700" fill="#059669">{d.comp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+89} fontSize="9.5" fill="#6b7280">✕ ไม่ชดเชย: <tspan fontWeight="700" fill="#ef4444">{d.notComp.toLocaleString()}</tspan></text><text x={tx+10} y={ty+103} fontSize="9.5" fill="#6b7280">⏳ รอประมวลผล: <tspan fontWeight="700" fill="#f59e0b">{d.pending.toLocaleString()}</tspan></text><line x1={tx+10} y1={ty+110} x2={tx+tw-10} y2={ty+110} stroke="#f3f4f6" strokeWidth="1"/>{d.amount>0&&<text x={tx+10} y={ty+124} fontSize="9" fill="#059669" fontWeight="600">฿{d.amount.toLocaleString()} (ชดเชยรวม)</text>}</g>)})()}
         <g transform={`translate(${PAD.l},8)`}><rect x="0" y="1" width="10" height="10" fill="url(#gb)" rx="2"/><text x="14" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ บี (คัดกรอง)</text><rect x="130" y="1" width="10" height="10" fill="url(#gc)" rx="2"/><text x="144" y="10" fontSize="10" fill="#4b5563">ตับอักเสบ ซี (คัดกรอง)</text>{hasSmt&&<><line x1="270" y1="6" x2="284" y2="6" stroke="#10b981" strokeWidth="2.5"/><circle cx="277" cy="6" r="3" fill="white" stroke="#10b981" strokeWidth="2"/><text x="288" y="10" fontSize="10" fill="#4b5563">ยอดชดเชย (฿)</text></>}</g>
       </svg>
     </div>
@@ -626,22 +562,20 @@ export function SeamlessPage({
   const [filterHsend,  setFHsend]      = useState<string[]>([])
   const [filterRights, setFRights]     = useState<string[]>([])
   const [filterUnit,   setFilterUnit]  = useState('')
-  const [fiscalYear,   setFiscalYear]  = useState('all')   // ปีงบประมาณ
-  const [dateFrom,     setDateFrom]    = useState('')       // ช่วงวันที่ YYYY-MM-DD
+  const [fiscalYear,   setFiscalYear]  = useState('all')
+  const [dateFrom,     setDateFrom]    = useState('')
   const [dateTo,       setDateTo]      = useState('')
   const [page,         setPage]        = useState(1)
   const [toast,        setToast]       = useState<{msg:string;ok:boolean}|null>(null)
   const [confirmClear, setConfirm]     = useState<'individual'|'summary'|'smt'|null>(null)
   const PG = 50
 
-  // แปลงปีงบ → ช่วงวันที่ (พ.ศ.) เช่น 2567 → 1/10/2566 - 30/9/2567
   const fiscalYearRange = useMemo(()=>{
     if (fiscalYear === 'all') return null
     const y = parseInt(fiscalYear)
-    return { from: `${y-1}/10`, to: `${y}/09` } // YYYY/MM สำหรับเปรียบ
+    return { from: `${y-1}/10`, to: `${y}/09` }
   }, [fiscalYear])
 
-  // ฟังก์ชันเปรียบ date string d/M/YYYY กับช่วง
   const inFiscalYear = useCallback((d: string): boolean => {
     if (!fiscalYearRange) return true
     const ds = parseDateParts(d)
@@ -650,19 +584,16 @@ export function SeamlessPage({
     return ym >= fiscalYearRange.from && ym <= fiscalYearRange.to
   }, [fiscalYearRange])
 
-  // ฟังก์ชันเปรียบ date string d/M/YYYY กับ dateFrom/dateTo (YYYY-MM-DD)
   const inDateRange = useCallback((d: string): boolean => {
     if (!dateFrom && !dateTo) return true
     const ds = parseDateParts(d)
     if (!ds) return false
-    // แปลง d/M/YYYY → YYYY-MM-DD
     const iso = `${ds.year}-${ds.month}-${d.split('/')[0].padStart(2,'0')}`
     if (dateFrom && iso < dateFrom) return false
     if (dateTo   && iso > dateTo)   return false
     return true
   }, [dateFrom, dateTo])
 
-  // ฟังก์ชัน filter date รวม (ใช้ fiscalYear หรือ dateRange อย่างใดอย่างหนึ่ง)
   const inActiveRange = useCallback((d: string): boolean => {
     if (dateFrom || dateTo) return inDateRange(d)
     return inFiscalYear(d)
@@ -698,10 +629,9 @@ export function SeamlessPage({
     return repMap
   },[sumRows, smtRows])
 
-
   const hepRows = useMemo(()=>indRows.filter(r=>isHepB(r.service_name)||isHepC(r.service_name)),[indRows])
 
-  // pid → name from village (screening data)
+  // pid → name: จาก village ก่อน, fallback จาก screening DB (มีชื่อจาก KTB CSV)
   const pidNameMap = useMemo(()=>{
     const m: Record<string,string> = {}
     for(const rows of Object.values(village??{}))
@@ -710,7 +640,6 @@ export function SeamlessPage({
     return m
   },[village])
 
-  // pid|type → IndividualRow[]
   const pidIndMap = useMemo(()=>{
     const m: Record<string,IndividualRow[]> = {}
     for(const r of hepRows){
@@ -720,18 +649,17 @@ export function SeamlessPage({
     return m
   },[hepRows])
 
-  // Primary table source: ScreeningDB → join Individual (1 row/pid+type) → join SMT
+  // Primary table: ScreeningDB → join Individual → join SMT
   const screeningTableRows = useMemo(():ScrTableRow[]=>{
     const sdb=screeningDB??{HBsAg:{},AntiHCV:{}}
     const allowedUnits:Set<string>|null=filterHsend.length>0
       ?new Set(filterHsend.flatMap(h=>HSEND_UNIT_MAP[h]??[]))
       :null
     const needDateFilter=fiscalYear!=='all'||!!dateFrom||!!dateTo
-    // Collapse per pid|type: keep entry with most-recent valid date
     const screenMap:Record<string,{date:string;unit:string}>={}
     for(const type of ['HBsAg','AntiHCV'] as const){
       for(const [,byPid] of Object.entries(sdb[type])){
-        for(const [pid,entry] of Object.entries(byPid as Record<string,{dates:string[];unit:string}>)){
+        for(const [pid,entry] of Object.entries(byPid as Record<string,{dates:string[];unit:string;name:string}>)){
           if(allowedUnits!==null&&!allowedUnits.has(entry.unit)) continue
           const validDates=needDateFilter?entry.dates.filter(d=>inActiveRange(d)):entry.dates
           if(needDateFilter&&validDates.length===0) continue
@@ -746,15 +674,16 @@ export function SeamlessPage({
     for(const [key,scr] of Object.entries(screenMap)){
       const [pid,type]=key.split('|') as [string,'HBsAg'|'AntiHCV']
       const inds=pidIndMap[key]??[]
-      // rights จาก seamless_records (Individual); fallback village
       const rightsFromInd=inds.find(r=>r.rights)?.rights??''
       const rights=rightsFromInd
-      // กรองสิทธิตาม seamless_records
       if(filterRights.length>0&&!filterRights.includes(rights)) continue
-      // ชื่อจาก village → individual (same pid, any type) → fallback ''
-      const name=pidNameMap[pid]??inds[0]?.name??hepRows.find(r=>r.pid===pid)?.name??''
+      // ชื่อ: village → seamless_records → screeningDB (KTB import)
+      const name = pidNameMap[pid]
+        ?? inds[0]?.name
+        ?? hepRows.find(r=>r.pid===pid)?.name
+        ?? getScreeningName(sdb, pid)
+        ?? ''
       if(inds.length>0){
-        // เลือก 1 Individual record ที่ดีที่สุด: ชดเชย > ไม่ชดเชย > ล่าสุด
         const best=inds.find(r=>r.status==='ชดเชย')??inds.find(r=>r.status==='ไม่ชดเชย')??inds[inds.length-1]
         const tr=repToTransfer[best.rep_no]
         result.push({
@@ -775,7 +704,7 @@ export function SeamlessPage({
       }
     }
     return result
-  },[screeningDB,pidNameMap,pidIndMap,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange,repToTransfer])
+  },[screeningDB,pidNameMap,pidIndMap,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange,repToTransfer,hepRows])
 
   const hepRowsFiltered = useMemo(()=>{
     let r=hepRows
@@ -786,19 +715,16 @@ export function SeamlessPage({
   },[hepRows,filterHsend,filterRights,fiscalYear,dateFrom,dateTo,inActiveRange])
 
   const stats = useMemo(()=>{
-    // ── บี/ซี มาจาก screeningDB (filter HSEND/ปี/เดือน) ──
     const allowedUnits: Set<string> | null =
       filterHsend.length > 0
         ? new Set(filterHsend.flatMap(h => HSEND_UNIT_MAP[h] ?? []))
         : null
     const unitAllowed = (unit: string) => allowedUnits === null || allowedUnits.has(unit)
     const sdb = screeningDB ?? { HBsAg: {}, AntiHCV: {} }
-
     const bPids = new Set<string>()
     const cPids = new Set<string>()
-
     for (const byPid of Object.values(sdb.HBsAg)) {
-      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string; name: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
         if (filterRights.length > 0) {
           const row = hepRows.find(r => r.pid === pid)
@@ -809,7 +735,7 @@ export function SeamlessPage({
       }
     }
     for (const byPid of Object.values(sdb.AntiHCV)) {
-      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string; name: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
         if (filterRights.length > 0) {
           const row = hepRows.find(r => r.pid === pid)
@@ -819,28 +745,20 @@ export function SeamlessPage({
         if (hasDate) cPids.add(pid)
       }
     }
-
-    // ── ชดเชย/ไม่ชดเชย มาจาก seamless_records ──
     const comp=hepRowsFiltered.filter(r=>r.status==='ชดเชย')
     const notComp=hepRowsFiltered.filter(r=>r.status==='ไม่ชดเชย')
     const reasonMap:Record<string,number>={}
     for(const r of notComp){const key=getReasonLabel(r.note,r.note_other);reasonMap[key]=(reasonMap[key]||0)+1}
-    // join PID จาก screeningDB กับ seamless_records เพื่อนับชดเชย
     const seamlessB = hepRowsFiltered.filter(r=>isHepB(r.service_name))
     const seamlessC = hepRowsFiltered.filter(r=>isHepC(r.service_name))
-    const seamlessBPids = new Set(seamlessB.map(r=>r.pid))
-    const seamlessCPids = new Set(seamlessC.map(r=>r.pid))
-
     const compB    = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').length
     const compC    = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').length
     const notCompB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ไม่ชดเชย').length
     const notCompC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ไม่ชดเชย').length
-    const pendingB = bPids.size - compB - notCompB  // อยู่ใน screeningDB แต่ไม่มีใน seamless
+    const pendingB = bPids.size - compB - notCompB
     const pendingC = cPids.size - compC - notCompC
-
     const totalCompB = seamlessB.filter(r=>bPids.has(r.pid)&&r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
     const totalCompC = seamlessC.filter(r=>cPids.has(r.pid)&&r.status==='ชดเชย').reduce((a,b)=>a+b.compensated,0)
-
     return {
       total:hepRowsFiltered.length,
       hepB:bPids.size, hepC:cPids.size,
@@ -854,17 +772,12 @@ export function SeamlessPage({
     }
   },[screeningDB, hepRowsFiltered, hepRows, filterHsend, filterRights, inActiveRange])
 
-  // ── monthlyData (ใหม่) ──────────────────────────────────────────
-  // บาร์ บี/ซี มาจาก screeningDB โดยตรง กรองด้วย unit ตาม HSEND mapping
-  // comp/notComp/pending join กับ seamless_records
+  // monthlyData
   const monthlyData = useMemo(()=>{
-    // 1. หา unit names ที่ต้อง filter จาก HSEND ที่เลือก
     const allowedUnits: Set<string> | null =
       filterHsend.length > 0
         ? new Set(filterHsend.flatMap(h => HSEND_UNIT_MAP[h] ?? []))
         : null
-
-    // 2. สร้าง pidStatus จาก seamless_records สำหรับ classify comp/notComp/pending
     const pidStatusB: Record<string, string> = {}
     const pidStatusC: Record<string, string> = {}
     for (const r of hepRowsFiltered) {
@@ -874,19 +787,12 @@ export function SeamlessPage({
         if (r.status === 'ชดเชย' || !pidStatusC[r.pid]) pidStatusC[r.pid] = r.status
       }
     }
-
-    // 3. นับ unique PID ต่อเดือนจาก screeningDB โดยตรง (ไม่พึ่ง seamless_records)
     const bPids: Record<string, Set<string>> = {}
     const cPids: Record<string, Set<string>> = {}
-
-    const unitAllowed = (unit: string) =>
-      allowedUnits === null || allowedUnits.has(unit)
-
+    const unitAllowed = (unit: string) => allowedUnits === null || allowedUnits.has(unit)
     const sdb = screeningDB ?? { HBsAg: {}, AntiHCV: {} }
-
-    // HBsAg
     for (const byPid of Object.values(sdb.HBsAg)) {
-      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string; name: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
         if (filterRights.length > 0) {
           const row = hepRows.find(r => r.pid === pid)
@@ -894,17 +800,15 @@ export function SeamlessPage({
         }
         for (const d of pidEntry.dates) {
           const ds = parseDateParts(d)
-          if (!ds) continue
-          if (!inActiveRange(d)) continue
+          if (!ds || !inActiveRange(d)) continue
           const k = `${ds.year}/${ds.month}`
           if (!bPids[k]) bPids[k] = new Set()
           bPids[k].add(pid)
         }
       }
     }
-    // AntiHCV
     for (const byPid of Object.values(sdb.AntiHCV)) {
-      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string }>)) {
+      for (const [pid, pidEntry] of Object.entries(byPid as Record<string, { dates: string[]; unit: string; name: string }>)) {
         if (!unitAllowed(pidEntry.unit)) continue
         if (filterRights.length > 0) {
           const row = hepRows.find(r => r.pid === pid)
@@ -912,16 +816,13 @@ export function SeamlessPage({
         }
         for (const d of pidEntry.dates) {
           const ds = parseDateParts(d)
-          if (!ds) continue
-          if (!inActiveRange(d)) continue
+          if (!ds || !inActiveRange(d)) continue
           const k = `${ds.year}/${ds.month}`
           if (!cPids[k]) cPids[k] = new Set()
           cPids[k].add(pid)
         }
       }
     }
-
-    // 4. classify comp/notComp/pending ต่อเดือน
     const compMap: Record<string, { comp: number; notComp: number; pending: number }> = {}
     const allMonths = new Set([...Object.keys(bPids), ...Object.keys(cPids)])
     for (const k of allMonths) {
@@ -940,20 +841,15 @@ export function SeamlessPage({
       }
       compMap[k] = cm
     }
-
-    // 5. เส้นยอดชดเชย (฿) มาจาก seamless_records เหมือนเดิม
     const pay: Record<string, { amount: number }> = {}
     for (const r of hepRowsFiltered) {
       if (!r.service_date) continue
       const ds = parseDateParts(r.service_date)
-      if (!ds) continue
-      if (!inActiveRange(r.service_date)) continue
+      if (!ds || !inActiveRange(r.service_date)) continue
       const k = `${ds.year}/${ds.month}`
       if (!pay[k]) pay[k] = { amount: 0 }
       pay[k].amount += r.compensated
     }
-
-    // 6. รวมและ sort
     const all = [...allMonths].sort()
     return all.map(label => ({
       label,
@@ -964,14 +860,7 @@ export function SeamlessPage({
       pending: compMap[label]?.pending ?? 0,
       amount:  pay[label]?.amount ?? 0,
     }))
-  },[
-    screeningDB,
-    hepRows,
-    hepRowsFiltered,
-    filterHsend,
-    filterRights,
-    inActiveRange,
-  ])
+  },[screeningDB,hepRows,hepRowsFiltered,filterHsend,filterRights,inActiveRange])
 
   const availableUnits = useMemo(()=>
     [...new Set(screeningTableRows.map(r=>r.unit).filter(Boolean))].sort()
@@ -993,15 +882,28 @@ export function SeamlessPage({
   const clearAllFilters=()=>{setFHsend([]);setFRights([]);setFiscalYear('all');setDateFrom('');setDateTo('');setFilterUnit('');setPage(1)}
 
   const DONUT_REASONS=stats.reasons.map(([label,val],i)=>({label:label.length>32?label.slice(0,32)+'…':label,value:val,color:['#ef4444','#f97316','#eab308','#8b5cf6','#6b7280'][i]??'#9ca3af'}))
-  const DONUT_RIGHTS=(()=>{
-    const cnt:Record<string,number>={}
-    for(const r of screeningTableRows){const gk=RIGHTS_GROUP[r.rights??'']??'UNK';cnt[gk]=(cnt[gk]??0)+1}
-    return Object.entries(cnt).map(([k,v])=>({label:GROUP_LABEL[k]??k,value:v,color:GROUP_COLOR[k]??'#9ca3af'})).sort((a,b)=>b.value-a.value)
-  })()
+
+  // Donut สิทธิ: จัดกลุ่มเป็น 4 กลุ่ม UC/SSS/OFC/LGO
+  const DONUT_RIGHTS = useMemo(()=>{
+    const cnt: Record<string,number> = {}
+    for(const r of screeningTableRows){
+      const gk = RIGHTS_GROUP[r.rights??''] ?? 'UNK'
+      cnt[gk] = (cnt[gk] ?? 0) + 1
+    }
+    // แสดงเฉพาะ 4 กลุ่มหลัก + UNK (ถ้ามี)
+    const order = ['UC','SSS','OFC','LGO','UNK']
+    return order
+      .filter(k => (cnt[k] ?? 0) > 0)
+      .map(k => ({
+        label: GROUP_LABEL[k] ?? k,
+        value: cnt[k] ?? 0,
+        color: GROUP_COLOR[k] ?? '#9ca3af',
+      }))
+  }, [screeningTableRows])
 
   function exportCsv(rows:ScrTableRow[]) {
     const h=['ลำดับ','PID','ชื่อ-สกุล','สิทธิ','วันตรวจ','ประเภท','REP No.','วันที่ส่ง','ขอเบิก','ชดเชย','สถานะ','สถานะโอน','วันโอน','หมายเหตุ','หน่วยบริการ']
-    const d=rows.map((r,i)=>{const reason=getReasonLabel(r.note,r.noteOther);const showTransfer=r.compStatus!=='ไม่ชดเชย'&&r.compStatus!=='ยังไม่มีข้อมูล';return[i+1,r.pid,r.name,r.rights?RIGHTS_LABEL[r.rights]??r.rights:'—',r.screenDate,r.type==='HBsAg'?'ตับอักเสบ บี':'ตับอักเสบ ซี',r.repNo,r.sendDate,r.totalClaim,r.compensated,r.compStatus,showTransfer?r.transferStatus||'—':'—',showTransfer&&r.transferDate?r.transferDate:'—',reason==='ไม่ระบุ'?'—':reason,shortenUnit(r.unit)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')})
+    const d=rows.map((r,i)=>{const reason=getReasonLabel(r.note,r.noteOther);const showTransfer=r.compStatus!=='ไม่ชดเชย'&&r.compStatus!=='ยังไม่มีข้อมูล';return[i+1,r.pid,r.name,r.rights||'—',r.screenDate,r.type==='HBsAg'?'ตับอักเสบ บี':'ตับอักเสบ ซี',r.repNo,r.sendDate,r.totalClaim,r.compensated,r.compStatus,showTransfer?r.transferStatus||'—':'—',showTransfer&&r.transferDate?r.transferDate:'—',reason==='ไม่ระบุ'?'—':reason,shortenUnit(r.unit)].map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')})
     const b=new Blob(['\uFEFF'+[h.join(','),...d].join('\n')],{type:'text/csv;charset=utf-8;'})
     const u=URL.createObjectURL(b),a=document.createElement('a');a.href=u;a.download=`seamless_${new Date().toISOString().split('T')[0]}.csv`;a.click();URL.revokeObjectURL(u)
   }
@@ -1098,7 +1000,7 @@ export function SeamlessPage({
         </div>
       </div>
 
-      {/* Upload zones */}
+      {/* Upload zones (แสดงเฉพาะตอนยังไม่มี Individual data) */}
       {indRows.length === 0 && (
         <div className="grid grid-cols-3 gap-4 mb-6">
           <UploadZone label="REP Individual" hint="ไฟล์ Excel จาก Seamless DMIS" accept=".xlsx,.xls" onFiles={handleIndFiles} loading={loadingInd} progress={progInd}/>
@@ -1120,24 +1022,12 @@ export function SeamlessPage({
               <option value="all">ทุกปีงบ</option>
               {['2567','2568','2569','2570'].map(y=><option key={y} value={y}>ปีงบ {y}</option>)}
             </select>
-            {/* ช่วงวันที่อิสระ */}
+            {/* ช่วงวันที่ */}
             <div className="flex items-center gap-1.5">
               <span className="text-[11px] text-gray-400">หรือ</span>
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={e=>{setDateFrom(e.target.value);setFiscalYear('all');setPage(1)}}
-                className="px-2.5 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
-                placeholder="วันเริ่มต้น"
-              />
+              <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setFiscalYear('all');setPage(1)}} className="px-2.5 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400"/>
               <span className="text-[11px] text-gray-400">—</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={e=>{setDateTo(e.target.value);setFiscalYear('all');setPage(1)}}
-                className="px-2.5 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400"
-                placeholder="วันสิ้นสุด"
-              />
+              <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setFiscalYear('all');setPage(1)}} className="px-2.5 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400"/>
               {(dateFrom||dateTo)&&<button type="button" onClick={()=>{setDateFrom('');setDateTo('');setPage(1)}} className="text-[10.5px] text-gray-400 hover:text-red-500">✕</button>}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -1154,11 +1044,10 @@ export function SeamlessPage({
             </div>
             <select value="" onChange={e=>{if(!e.target.value)return;setFRights(p=>p.includes(e.target.value)?p.filter(v=>v!==e.target.value):[...p,e.target.value]);setPage(1)}} className="pl-3 pr-7 py-1.5 text-[12px] bg-gray-50 border border-gray-200 rounded-lg outline-none focus:border-blue-400 cursor-pointer appearance-none">
               <option value="">สิทธิ{filterRights.length>0?` ✓${filterRights.length}`:''}</option>
-              {[...new Set(hepRows.map(r=>r.rights||''))].filter(Boolean).sort((a,b)=>hepRows.filter(r=>r.rights===b).length-hepRows.filter(r=>r.rights===a).length).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{RIGHTS_LABEL[k]??k} ({k})</option>)}
+              {[...new Set(hepRows.map(r=>r.rights||''))].filter(Boolean).sort((a,b)=>hepRows.filter(r=>r.rights===b).length-hepRows.filter(r=>r.rights===a).length).map(k=><option key={k} value={k}>{filterRights.includes(k)?'✓ ':''}{k} ({hepRows.filter(r=>r.rights===k).length})</option>)}
             </select>
             {hasFilter&&<button type="button" onClick={clearAllFilters} className="px-3 py-1.5 text-[11.5px] font-semibold text-red-500 bg-red-50 border border-red-200 rounded-lg hover:bg-red-100 transition-all">ล้างตัวกรอง</button>}
           </div>
-          {/* ชื่อหน่วยบริการ HSEND ที่เลือก */}
           {filterHsend.length>0&&<div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
             {filterHsend.map(h=>(
               <div key={h} className="inline-flex items-center gap-2 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-lg">
@@ -1171,7 +1060,7 @@ export function SeamlessPage({
             {fiscalYear!=='all'&&<Chip label={`ปีงบ ${fiscalYear}`} onRemove={()=>{setFiscalYear('all');setPage(1)}} color="purple"/>}
             {dateFrom&&<Chip label={`ตั้งแต่ ${dateFrom}`} onRemove={()=>{setDateFrom('');setPage(1)}} color="purple"/>}
             {dateTo&&<Chip label={`ถึง ${dateTo}`} onRemove={()=>{setDateTo('');setPage(1)}} color="purple"/>}
-            {filterRights.map(r=><Chip key={r} label={RIGHTS_LABEL[r]??r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
+            {filterRights.map(r=><Chip key={r} label={r} onRemove={()=>{setFRights(p=>p.filter(v=>v!==r));setPage(1)}} color="green"/>)}
           </div>}
         </div>
 
@@ -1209,6 +1098,7 @@ export function SeamlessPage({
               <div className="flex justify-between"><span className="text-gray-500">ยอดชดเชย</span><span className="font-bold text-emerald-600">฿{fmtBaht(stats.totalComp)}</span></div>
             </div>
           </div>
+          {/* Donut สิทธิ 4 กลุ่ม */}
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
             <div className="flex items-center gap-2 mb-4"><div className="w-2 h-2 rounded-full bg-amber-500"/><span className="font-bold text-gray-900 text-[13px]">สิทธิการรักษา</span></div>
             <DonutChart size={130} slices={DONUT_RIGHTS}/>
@@ -1259,11 +1149,17 @@ export function SeamlessPage({
               <tbody>
                 {pageRows.length===0?<tr><td colSpan={15} className="text-center py-16 text-gray-400"><div className="text-3xl mb-3 opacity-40">🔍</div><div className="text-[13px]">ไม่พบข้อมูล</div></td></tr>:(pageRows as ScrTableRow[]).map((r,i)=>{
                   const reason=getReasonLabel(r.note,r.noteOther)
+                  const gb = GROUP_BADGE[RIGHTS_GROUP[r.rights??''] ?? 'UNK'] ?? GROUP_BADGE.UNK
                   return <tr key={`${r.pid}|${r.type}|${r.repNo}|${i}`} className="border-b border-gray-100 hover:bg-blue-50/50 transition-all even:bg-gray-50/30">
                     <td className="px-3 py-2.5 text-gray-400 font-mono text-[11px]">{(page-1)*PG+i+1}</td>
                     <td className="px-3 py-2.5 font-semibold text-gray-900 whitespace-nowrap">{r.name||<span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-400">{r.pid}</td>
-                    <td className="px-3 py-2.5 whitespace-nowrap">{(()=>{const gb=GROUP_BADGE[RIGHTS_GROUP[r.rights??'']??'UNK']??GROUP_BADGE.UNK;return<span title={r.rights?RIGHTS_LABEL[r.rights]??r.rights:''} className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap',gb.bg,gb.text)}>{gb.label}</span>})()}</td>
+                    {/* สิทธิ badge 4 กลุ่ม */}
+                    <td className="px-3 py-2.5 whitespace-nowrap">
+                      <span title={r.rights||''} className={cn('px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap', gb.bg, gb.text)}>
+                        {gb.label}
+                      </span>
+                    </td>
                     <td className="px-3 py-2.5 text-gray-600 whitespace-nowrap text-[11.5px]">{r.screenDate||'—'}</td>
                     <td className="px-3 py-2.5"><span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold',r.type==='HBsAg'?'bg-blue-50 text-blue-700 border border-blue-200':'bg-cyan-50 text-cyan-700 border border-cyan-200')}>{r.type==='HBsAg'?'■ บี':'● ซี'}</span></td>
                     <td className="px-3 py-2.5 font-mono text-[11px] text-gray-600 whitespace-nowrap">{r.repNo||<span className="text-gray-300">—</span>}</td>

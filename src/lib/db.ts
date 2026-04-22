@@ -79,7 +79,7 @@ export async function getAllScreenings(): Promise<ScreeningRow[]> {
   const results = await Promise.all(
     Array.from({ length: pages }, (_, i) =>
       sb.from('screenings')
-        .select('pid, type, year, date, unit, imported_at')
+        .select('pid, type, year, date, unit, name, imported_at')
         .range(i * PAGE, (i + 1) * PAGE - 1)
     )
   )
@@ -129,7 +129,7 @@ export async function insertScreenings(rows: ScreeningRow[]): Promise<number> {
     const chunk = rows.slice(i, i + BATCH)
     const { error, count } = await sb
       .from('screenings')
-      .upsert(chunk, { onConflict: 'pid,date,type', ignoreDuplicates: true, count: 'exact' })
+      .upsert(chunk, { onConflict: 'pid,date,type', ignoreDuplicates: false, count: 'exact' })
     if (error) throw new Error(error.message)
     total += count ?? chunk.length
   }
@@ -151,7 +151,7 @@ export async function upsertScreeningForPid(
     await sb.from('screenings').delete()
       .eq('pid', pid).eq('type', type).eq('year', year)
     const { error } = await sb.from('screenings').insert({
-      pid, type, year, date, unit, imported_at: new Date().toISOString(),
+      pid, type, year, date, unit, name: '', imported_at: new Date().toISOString(),
     })
     if (error) throw new Error(error.message)
   } else {

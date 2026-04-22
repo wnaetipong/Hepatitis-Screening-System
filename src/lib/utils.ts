@@ -62,12 +62,14 @@ export function formatAddr(val: unknown): string {
 export function buildScreeningDB(rows: ScreeningRow[]): ScreeningDB {
   const db: ScreeningDB = { HBsAg: {}, AntiHCV: {} }
   for (const row of rows) {
-    const { pid, type, year, date, unit } = row
+    const { pid, type, year, date, unit, name } = row
     if (!db[type][year]) db[type][year] = {}
-    if (!db[type][year][pid]) db[type][year][pid] = { dates: [], unit: '' }
+    if (!db[type][year][pid]) db[type][year][pid] = { dates: [], unit: '', name: '' }
     const entry = db[type][year][pid]
     if (date && !entry.dates.includes(date)) entry.dates.push(date)
     if (unit && !entry.unit) entry.unit = unit
+    // เก็บชื่อ: ถ้ายังว่างให้เซต, ถ้ามีแล้วไม่ทับ
+    if (name && !entry.name) entry.name = name
   }
   return db
 }
@@ -88,16 +90,31 @@ export function getPidInfo(
   db: ScreeningDB,
   pid: string,
   type: 'HBsAg' | 'AntiHCV',
-): { by_year: Record<string, string[]>; unit: string } {
+): { by_year: Record<string, string[]>; unit: string; name: string } {
   const t = db[type] ?? {}
-  const result: { by_year: Record<string, string[]>; unit: string } = { by_year: {}, unit: '' }
+  const result: { by_year: Record<string, string[]>; unit: string; name: string } = {
+    by_year: {},
+    unit: '',
+    name: '',
+  }
   for (const [yr, pids] of Object.entries(t)) {
     if (pids[pid]) {
       result.by_year[yr] = pids[pid].dates
       if (!result.unit && pids[pid].unit) result.unit = pids[pid].unit
+      if (!result.name && pids[pid].name) result.name = pids[pid].name
     }
   }
   return result
+}
+
+// ดึงชื่อของ pid จาก ScreeningDB (ลอง HBsAg ก่อน แล้ว AntiHCV)
+export function getScreeningName(db: ScreeningDB, pid: string): string {
+  for (const type of ['HBsAg', 'AntiHCV'] as const) {
+    for (const byPid of Object.values(db[type])) {
+      if (byPid[pid]?.name) return byPid[pid].name
+    }
+  }
+  return ''
 }
 
 export function fmtDates(

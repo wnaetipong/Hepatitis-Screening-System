@@ -30,14 +30,15 @@ export interface ScreeningRow {
   year:         string   // 2567, 2568, 2569
   date:         string   // d/M/YYYY
   unit:         string   // หน่วยตรวจ
+  name:         string   // ชื่อ-นามสกุล (จาก KTB CSV)
   imported_at?: string
 }
 
 // ── Screening lookup ─────────────────────────────────────────────
-// { HBsAg: { '2567': { pid: { dates, unit } } } }
-export type ScreeningByYear = Record<string, { dates: string[]; unit: string }>
+// { HBsAg: { '2567': { pid: { dates, unit, name } } } }
+export type ScreeningByYear = Record<string, { dates: string[]; unit: string; name: string }>
 export type ScreeningDB = {
-  HBsAg:   Record<string, ScreeningByYear>   // year → pid → {dates,unit}
+  HBsAg:   Record<string, ScreeningByYear>   // year → pid → {dates, unit, name}
   AntiHCV: Record<string, ScreeningByYear>
 }
 
