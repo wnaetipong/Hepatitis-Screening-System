@@ -257,22 +257,40 @@ const HSEND_UNIT_MAP: Record<string, string[]> = {
   '11258': ['โรงพยาบาลวังทรายพูน'],
 }
 
-// ── สิทธิ: 4 กลุ่ม ────────────────────────────────────────────────
+// ── สิทธิ: 4 กลุ่ม (ตาม spec สปสช.) ─────────────────────────────
 const RIGHTS_GROUP: Record<string,string> = {
-  // UC – หลักประกันสุขภาพแห่งชาติ
-  UCS:'UC', WEL:'UC', DIS:'UC', DOF:'UC', DLG:'UC', DOL:'UC', DPV:'UC',
-  // SSS – ประกันสังคม
-  SSS:'SSS', SSI:'SSS', SIF:'SSS', SIL:'SSS', PSI:'SSS', VSI:'SSS', VIO:'SSS', IOL:'SSS',
-  PSL:'SSS', VSL:'SSS',
-  // OFC – ข้าราชการ/หน่วยงานรัฐ (รวม GOV/VET/PRI/POL/FOR/THA)
-  OFC:'OFC', OFL:'OFC', OFB:'OFC', SOF:'OFC', SOB:'OFC', SOL:'OFC', L03:'OFC', L06:'OFC', L08:'OFC',
-  VOF:'OFC', VSS:'OFC', VBF:'OFC', VSO:'OFC', VIL:'OFC', VLB:'OFC', VLG:'OFC', VOL:'OFC',
-  PVT:'OFC', PSS:'OFC', POF:'OFC', PBF:'OFC', PSO:'OFC', VPT:'OFC', VPS:'OFC', VPO:'OFC',
-  PIL:'OFC', PLB:'OFC', PLG:'OFC',
-  L01:'OFC', L02:'OFC', L04:'OFC', L05:'OFC', L07:'OFC', BFC:'OFC', SBF:'OFC', OBV:'OFC',
-  NRD:'OFC', NRH:'OFC', FRG:'OFC', STP:'OFC', POL:'OFC', '005':'OFC',
-  // LGO – สวัสดิการพนักงานส่วนท้องถิ่น
-  LGO:'LGO', LBF:'LGO', SLG:'LGO', SLB:'LGO',
+  // ── UC: หลักประกันสุขภาพแห่งชาติ ──────────────────────────────
+  // บัตรทอง, ผู้พิการ, รอพิสูจน์สถานะ, คนต่างด้าว, คนไทยต่างประเทศ
+  UCS:'UC', WEL:'UC',
+  DIS:'UC', DOF:'UC', DLG:'UC', DOL:'UC', DPV:'UC',
+  STP:'UC', '005':'UC',
+  NRD:'UC', NRH:'UC', FRG:'UC',
+  '':'UC',   // ยังไม่ลงทะเบียนตามมาตรา 6
+
+  // ── OFC: ข้าราชการ / รัฐวิสาหกิจ ──────────────────────────────
+  // ข้าราชการ, ข้าราชการการเมือง, ทหารผ่านศึก, ครูเอกชน
+  OFC:'OFC', OFB:'OFC', OFL:'OFC', OBV:'OFC',
+  BFC:'OFC',
+  VOF:'OFC', VBF:'OFC', VOL:'OFC', VLB:'OFC', VLG:'OFC',
+  VPL:'OFC', VPT:'OFC', VPO:'OFC',
+  PVT:'OFC', POF:'OFC', PBF:'OFC', POL:'OFC', PLB:'OFC', PLG:'OFC',
+
+  // ── SSS: ประกันสังคม ────────────────────────────────────────────
+  // ประกันสังคมเป็นสิทธิหลัก (รวม combo ที่ SSS นำ)
+  SSS:'SSS', SSI:'SSS',
+  SOF:'SSS', SOB:'SSS', SOL:'SSS', SBF:'SSS',
+  SIF:'SSS', SIL:'SSS',
+  SLB:'SSS', SLG:'SSS',
+  VSS:'SSS', VSO:'SSS', VSI:'SSS', VIO:'SSS', VIL:'SSS', VSL:'SSS',
+  PSS:'SSS', PSO:'SSS', PSI:'SSS', PSL:'SSS',
+  VPS:'SSS',
+  IOL:'SSS',
+
+  // ── LGO: องค์กรปกครองส่วนท้องถิ่น ─────────────────────────────
+  // สวัสดิการ อปท. และรหัสตระกูล L (ดึงเงินเข้ากองทุนท้องถิ่น)
+  LGO:'LGO', LBF:'LGO',
+  L01:'LGO', L02:'LGO', L03:'LGO', L04:'LGO',
+  L05:'LGO', L06:'LGO', L07:'LGO', L08:'LGO',
 }
 const GROUP_LABEL: Record<string,string> = {
   UC:  'หลักประกันสุขภาพแห่งชาติ (UC)',
